@@ -1,0 +1,245 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Hardened Global Helpers
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidBillingMethod(method) {
+      return method is string && method.size() <= 40 && method in [
+        'bKash',
+        'Nagad',
+        'Dutch-Bangla Bank',
+        'Visa / Mastercard',
+        'PayPal',
+        'Wire Transfer'
+      ];
+    }
+
+    // Validation Blueprint: UserProfile (/users/{userId})
+    function isValidUserProfile(data) {
+      return data.keys().hasAll([
+        'uid',
+        'displayName',
+        'email',
+        'photoURL',
+        'phone',
+        'company',
+        'roleTitle',
+        'location',
+        'preferredBillingMethod',
+        'billingDetails',
+        'bio',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid',
+        'displayName',
+        'email',
+        'photoURL',
+        'phone',
+        'company',
+        'roleTitle',
+        'location',
+        'preferredBillingMethod',
+        'billingDetails',
+        'bio',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.uid == request.auth.uid &&
+      data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+      data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+      data.photoURL is string && data.photoURL.size() >= 0 && data.photoURL.size() <= 500 &&
+      data.phone is string && data.phone.size() >= 0 && data.phone.size() <= 40 &&
+      data.company is string && data.company.size() >= 0 && data.company.size() <= 100 &&
+      data.roleTitle is string && data.roleTitle.size() >= 0 && data.roleTitle.size() <= 100 &&
+      data.location is string && data.location.size() >= 0 && data.location.size() <= 120 &&
+      isValidBillingMethod(data.preferredBillingMethod) &&
+      data.billingDetails is string && data.billingDetails.size() >= 0 && data.billingDetails.size() <= 120 &&
+      data.bio is string && data.bio.size() >= 0 && data.bio.size() <= 500 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // Validation Blueprint: ProjectOrder (/orders/{orderId})
+    function isValidProjectOrder(data) {
+      return data.keys().hasAll([
+        'uid',
+        'orderNumber',
+        'projectTitle',
+        'serviceCategory',
+        'packageTier',
+        'amountUsd',
+        'billingMethod',
+        'billingReference',
+        'billingStatus',
+        'projectStatus',
+        'orderDate',
+        'deliveryEstimate',
+        'projectNotes',
+        'clientName',
+        'clientEmail',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid',
+        'orderNumber',
+        'projectTitle',
+        'serviceCategory',
+        'packageTier',
+        'amountUsd',
+        'billingMethod',
+        'billingReference',
+        'billingStatus',
+        'projectStatus',
+        'orderDate',
+        'deliveryEstimate',
+        'projectNotes',
+        'clientName',
+        'clientEmail',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.uid == request.auth.uid &&
+      data.orderNumber is string && data.orderNumber.size() >= 3 && data.orderNumber.size() <= 40 && data.orderNumber.matches('^[A-Z0-9\\-]+$') &&
+      data.projectTitle is string && data.projectTitle.size() >= 2 && data.projectTitle.size() <= 120 &&
+      data.serviceCategory is string && data.serviceCategory.size() <= 50 && data.serviceCategory in [
+        'Web Development',
+        'App Development',
+        'Graphic & Brand Design',
+        'Video Editing & Motion',
+        'Digital Media & Growth'
+      ] &&
+      data.packageTier is string && data.packageTier.size() <= 30 && data.packageTier in [
+        'Starter',
+        'Professional',
+        'Enterprise',
+        'Custom'
+      ] &&
+      (data.amountUsd is int || data.amountUsd is float) && data.amountUsd > 0 && data.amountUsd <= 1000000 &&
+      isValidBillingMethod(data.billingMethod) &&
+      data.billingReference is string && data.billingReference.size() >= 2 && data.billingReference.size() <= 80 &&
+      data.billingStatus is string && data.billingStatus.size() <= 40 && data.billingStatus in [
+        'Paid',
+        'Pending Verification',
+        'Installment (50% Paid)'
+      ] &&
+      data.projectStatus is string && data.projectStatus.size() <= 30 && data.projectStatus in [
+        'In Progress',
+        'In Review',
+        'Completed',
+        'Cancelled'
+      ] &&
+      data.orderDate is string && data.orderDate.size() >= 8 && data.orderDate.size() <= 32 &&
+      data.deliveryEstimate is string && data.deliveryEstimate.size() >= 2 && data.deliveryEstimate.size() <= 60 &&
+      data.projectNotes is string && data.projectNotes.size() >= 0 && data.projectNotes.size() <= 1000 &&
+      data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 100 &&
+      data.clientEmail is string && data.clientEmail.size() >= 3 && data.clientEmail.size() <= 150 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    // Collection: /users/{userId}
+    match /users/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        request.auth.uid == userId &&
+        isValidUserProfile(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        request.auth.uid == userId &&
+        isValidUserProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Action: Update Profile & Billing Preferences
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName',
+            'photoURL',
+            'phone',
+            'company',
+            'roleTitle',
+            'location',
+            'preferredBillingMethod',
+            'billingDetails',
+            'bio',
+            'updatedAt'
+          ])
+        );
+      allow delete: if false;
+    }
+
+    // Collection: /orders/{orderId}
+    match /orders/{orderId} {
+      allow get: if isVerifiedUser() && isValidId(orderId) && existing().uid == request.auth.uid;
+      allow list: if isVerifiedUser() && existing().uid == request.auth.uid;
+      allow create: if isVerifiedUser() &&
+        isValidId(orderId) &&
+        isValidProjectOrder(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerifiedUser() &&
+        isValidId(orderId) &&
+        isValidProjectOrder(incoming()) &&
+        existing().uid == request.auth.uid &&
+        incoming().uid == existing().uid &&
+        incoming().orderNumber == existing().orderNumber &&
+        incoming().orderDate == existing().orderDate &&
+        incoming().amountUsd == existing().amountUsd &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        !(existing().projectStatus in ['Completed', 'Cancelled']) &&
+        (
+          // Action 1: Update Order Notes or Billing Details
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'billingMethod',
+            'billingReference',
+            'billingStatus',
+            'projectNotes',
+            'updatedAt'
+          ]) ||
+          // Action 2: Update Order Status (e.g., Mark Completed or Cancelled)
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'projectStatus',
+            'billingStatus',
+            'updatedAt'
+          ])
+        );
+      allow delete: if false;
+    }
+  }
+}

@@ -1,0 +1,255 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated client profile and billing preferences stored per user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Full name of the user.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Email address of the user.",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Profile picture URL.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "phone": {
+          "type": "string",
+          "description": "Phone or WhatsApp contact number.",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "company": {
+          "type": "string",
+          "description": "Company, brand, or organization name.",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "roleTitle": {
+          "type": "string",
+          "description": "Job title or role within the organization.",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "location": {
+          "type": "string",
+          "description": "City and country for billing and timezone alignment.",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "preferredBillingMethod": {
+          "type": "string",
+          "description": "Default payment method selected by the client.",
+          "enum": [
+            "bKash",
+            "Nagad",
+            "Dutch-Bangla Bank",
+            "Visa / Mastercard",
+            "PayPal",
+            "Wire Transfer"
+          ]
+        },
+        "billingDetails": {
+          "type": "string",
+          "description": "Masked billing identifier or account details.",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "bio": {
+          "type": "string",
+          "description": "Client notes, project preferences, or brief bio.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "email",
+        "photoURL",
+        "phone",
+        "company",
+        "roleTitle",
+        "location",
+        "preferredBillingMethod",
+        "billingDetails",
+        "bio",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ProjectOrder": {
+      "title": "ProjectOrder",
+      "description": "Project order record containing scope, billing method, order date, and invoice details.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the client who placed the order.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "orderNumber": {
+          "type": "string",
+          "description": "Human-readable order/invoice reference code.",
+          "minLength": 3,
+          "maxLength": 40,
+          "pattern": "^[A-Z0-9\\-]+$"
+        },
+        "projectTitle": {
+          "type": "string",
+          "description": "Name of the project or deliverable ordered.",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "serviceCategory": {
+          "type": "string",
+          "description": "Service vertical for the project.",
+          "enum": [
+            "Web Development",
+            "App Development",
+            "Graphic & Brand Design",
+            "Video Editing & Motion",
+            "Digital Media & Growth"
+          ]
+        },
+        "packageTier": {
+          "type": "string",
+          "description": "Selected package tier.",
+          "enum": ["Starter", "Professional", "Enterprise", "Custom"]
+        },
+        "amountUsd": {
+          "type": "number",
+          "description": "Total billed amount in USD."
+        },
+        "billingMethod": {
+          "type": "string",
+          "description": "Payment method used for the order.",
+          "enum": [
+            "bKash",
+            "Nagad",
+            "Dutch-Bangla Bank",
+            "Visa / Mastercard",
+            "PayPal",
+            "Wire Transfer"
+          ]
+        },
+        "billingReference": {
+          "type": "string",
+          "description": "Masked account number, transaction ID, or billing reference.",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "billingStatus": {
+          "type": "string",
+          "description": "Current payment status of the order.",
+          "enum": ["Paid", "Pending Verification", "Installment (50% Paid)"]
+        },
+        "projectStatus": {
+          "type": "string",
+          "description": "Current lifecycle status of the project order.",
+          "enum": ["In Progress", "In Review", "Completed", "Cancelled"]
+        },
+        "orderDate": {
+          "type": "string",
+          "description": "Formatted or ISO date string when the order was placed.",
+          "minLength": 8,
+          "maxLength": 32
+        },
+        "deliveryEstimate": {
+          "type": "string",
+          "description": "Estimated delivery window or milestone date.",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "projectNotes": {
+          "type": "string",
+          "description": "Project brief, deliverables, and special instructions.",
+          "minLength": 0,
+          "maxLength": 1000
+        },
+        "clientName": {
+          "type": "string",
+          "description": "Client name recorded on the order receipt.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "clientEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Client email recorded on the order receipt.",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the order was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the order was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "orderNumber",
+        "projectTitle",
+        "serviceCategory",
+        "packageTier",
+        "amountUsd",
+        "billingMethod",
+        "billingReference",
+        "billingStatus",
+        "projectStatus",
+        "orderDate",
+        "deliveryEstimate",
+        "projectNotes",
+        "clientName",
+        "clientEmail",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private client profile documents keyed by Firebase Auth UID."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/ProjectOrder" },
+      "description": "Client project orders containing billing method, order date, and downloadable receipt metadata."
+    }
+  }
+}
