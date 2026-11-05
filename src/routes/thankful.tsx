@@ -69,38 +69,42 @@ const TRIBUTE_SECTIONS: TributeSection[] = [
     people: [
       {
         id: "teacher-1",
-        name: "Sakibul Islam",
-        designation: "Senior Mentor & Educator",
+        name: "Nasif Muhammad",
+        designation: "As Sunnah Skill Development Institute",
         description:
           "Guided my earliest steps into technology and instilled the discipline to pursue excellence with humility.",
-        image: UPLOADED_PHOTOS[0],
+        image:
+          "https://www.image2url.com/r2/default/images/1793841385507-a0b61a75-6e74-4c72-b43d-8b25e34c28cc.jpg",
         category: "Teachers",
       },
       {
         id: "teacher-2",
-        name: "Sakibul Islam",
-        designation: "Academic Advisor & Instructor",
+        name: "Masud Rana",
+        designation: "Taherpur Degree College",
         description:
           "Encouraged curiosity beyond textbooks and taught me how to approach complex problems with clarity.",
-        image: UPLOADED_PHOTOS[1],
+        image:
+          "https://www.image2url.com/r2/default/images/1793841482714-ae245549-bed5-414f-9559-9bec4d3c0da8.jpg",
         category: "Teachers",
       },
       {
         id: "teacher-3",
-        name: "Sakibul Islam",
-        designation: "Creative Direction Mentor",
+        name: "Nizam Uddin",
+        designation: "Talent Private Home",
         description:
           "Showed me how storytelling and technical precision come together to create meaningful work.",
-        image: UPLOADED_PHOTOS[2],
+        image:
+          "https://www.image2url.com/r2/default/images/1793841956802-e3fda827-2193-47eb-b9b4-ff6b152b881d.png",
         category: "Teachers",
       },
       {
         id: "teacher-4",
-        name: "Sakibul Islam",
-        designation: "Life & Ethics Guide",
+        name: "MD. Ashraful Islam",
+        designation: "Rajshahi City Corporation Employed Skill Development Institute",
         description:
           "Reminded me that integrity, kindness, and service to others matter far more than any accolade.",
-        image: UPLOADED_PHOTOS[3],
+        image:
+          "https://www.image2url.com/r2/default/images/1793842051410-7a9b0cad-5428-448b-9789-ff8116471317.jpg",
         category: "Teachers",
       },
     ],
