@@ -118,38 +118,42 @@ const TRIBUTE_SECTIONS: TributeSection[] = [
     people: [
       {
         id: "friend-1",
-        name: "Sakibul Islam",
-        designation: "Creative Collaborator & Friend",
+        name: "Hridoy Shah Taj",
+        designation: "Close Friend",
         description:
-          "Always the first to offer honest feedback, unwavering encouragement, and a helping hand when deadlines loomed.",
-        image: UPLOADED_PHOTOS[0],
+          "Some relationships are not by blood, but are closer than blood. Taj and I have a friendship like that. I can talk to him openly. Talking makes me feel better.",
+        image:
+          "https://www.image2url.com/r2/default/images/1793843963600-3cb8ed5a-b24a-4f39-b47e-2c4559ce9555.png",
         category: "Friends",
       },
       {
         id: "friend-2",
-        name: "Sakibul Islam",
-        designation: "Childhood Companion",
+        name: "Sahariar Al Rahat",
+        designation: "Friend",
         description:
-          "Walked beside me from the very beginning, celebrating small victories long before anyone else noticed.",
-        image: UPLOADED_PHOTOS[1],
+          "I met Rahat Bhai at As Sunnah Skill. He is the simplest and kindest person I have ever met. One of the friends I have in my life is a blessing from a good person.",
+        image:
+          "https://www.image2url.com/r2/default/images/1793844330432-1cea6c92-a884-4a6a-b0d4-c53be832c6d5.jpg",
         category: "Friends",
       },
       {
         id: "friend-3",
-        name: "Sakibul Islam",
-        designation: "Fellow Builder & Confidant",
+        name: "Jahid Hasan",
+        designation: "Childhood Friend",
         description:
-          "Turned countless Difficult moments into shared laughter and inspired me to keep pushing forward.",
-        image: UPLOADED_PHOTOS[2],
+          "I studied together with Hasan from class one to intermediate. We have many memories. I have benefited a lot from him in my life.",
+        image:
+          "https://www.image2url.com/r2/default/images/1793844761203-83a1eef1-f37e-4eb9-aaa9-19280da33f95.jpg",
         category: "Friends",
       },
       {
         id: "friend-4",
-        name: "Sakibul Islam",
-        designation: "Visual Artist & Partner in Craft",
+        name: "Habibul Bashar Sajib",
+        designation: "Childhood Friend",
         description:
-          "Shared late-night brainstorming sessions and believed in every ambitious idea from day one.",
-        image: UPLOADED_PHOTOS[3],
+          "I studied together with Sajib from class one to intermediate. We have many memories. I have benefited a lot from him in my life.",
+        image:
+          "https://www.image2url.com/r2/default/images/1793845006193-2f18a268-1037-42b4-a6d8-d2c4bd17f9ab.jpg",
         category: "Friends",
       },
     ],
