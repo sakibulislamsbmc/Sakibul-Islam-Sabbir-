@@ -163,38 +163,42 @@ const TRIBUTE_SECTIONS: TributeSection[] = [
     people: [
       {
         id: "relative-1",
-        name: "Sakibul Islam",
-        designation: "Pillar of the Family",
+        name: "Alomgir Hossain",
+        designation: "Mama (close person)",
         description:
-          "Provided the quiet strength, warmth, and sacrifices that made every dream of mine possible.",
-        image: UPLOADED_PHOTOS[0],
+          "He is my Mama, if there is anyone in my life who selflessly wishes me well and prays for me, he is the one. I have seen him as the one who is the happiest with my success and the most devastated by my sorrow.",
+        image:
+          "https://www.image2url.com/r2/default/images/1793842577596-17849618-fbaa-40bb-858f-2f0e54e66b69.jpg",
         category: "Relatives",
       },
       {
         id: "relative-2",
-        name: "Sakibul Islam",
-        designation: "Guardian & Guiding Light",
+        name: "MD Rocky Hossain",
+        designation: "Brother (close person)",
         description:
-          "Stood by me with constant prayers and unwavering faith through every season of life.",
-        image: UPLOADED_PHOTOS[1],
+          "I have memories of an important time in my life with my brother. He is the most honest and hardworking person I have ever met. I can tell he loves me selflessly and prays for me.",
+        image:
+          "https://www.image2url.com/r2/default/images/1793843000564-d95da8c4-21b1-407c-9169-e484884e1c13.jpg",
         category: "Relatives",
       },
       {
         id: "relative-3",
-        name: "Sakibul Islam",
-        designation: "Beloved Family Member",
+        name: "Yasir Arafat Prince",
+        designation: "Brother",
         description:
-          "Filled our home with encouragement and taught me the value of patience and gratitude.",
-        image: UPLOADED_PHOTOS[2],
+          "I met my brother mainly through content creation. Now I have such a good relationship with him, almost like a friend. Even though we are now in different places due to busy work schedules, our respect and love for each other remains unwavering and will remain so for life.",
+        image:
+          "https://www.image2url.com/r2/default/images/1793843089627-6a6013d4-58a7-4191-aa53-37acaed73702.jpg",
         category: "Relatives",
       },
       {
         id: "relative-4",
-        name: "Sakibul Islam",
-        designation: "Lifelong Supporter",
+        name: "Ahmed Mostafa Raian",
+        designation: "Brother",
         description:
-          "Cheered for every milestone and reminded me to stay grounded in faith and family.",
-        image: UPLOADED_PHOTOS[3],
+          "I met Raian Bhai while attending As Sunnah Skill. He is the most patient, humble and sincere person I have ever met in my life. I have learned a lot from him. I want the good relationship I have with him to last until heaven.",
+        image:
+          "https://www.image2url.com/r2/default/images/1793843567628-5614b6ad-e5de-41bc-afbf-da81e28e3429.webp",
         category: "Relatives",
       },
     ],
