@@ -2,17 +2,21 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   ArrowUpRight,
+  Calendar,
   CheckCircle2,
   Code2,
+  Cpu,
   ExternalLink,
   Globe,
   Layout,
   Menu,
   Smartphone,
+  Sparkles,
   X,
 } from "lucide-react";
 import { MobileBottomNav, MobileHeaderMenu } from "@/components/MobileNavigation";
 import { PWAInstallButton } from "@/components/PWAInstallButton";
+import { EVENT_CONFIG, WORKSHOP_ASSETS } from "@/data/workshop-data";
 
 export const Route = createFileRoute("/projects")({
   head: () => ({
@@ -254,7 +258,7 @@ const ANDROID_PROJECTS: ProjectShowcaseItem[] = [
 
 function ProjectsPage() {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"all" | "website" | "android">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "website" | "android" | "workshop">("all");
   const [selectedProject, setSelectedProject] = useState<ProjectShowcaseItem | null>(null);
 
   return (
@@ -380,7 +384,7 @@ function ProjectsPage() {
                       : "border-border/80 bg-background/40 text-muted-foreground backdrop-blur-md hover:border-foreground/30 hover:text-foreground"
                   }`}
                 >
-                  All Projects (10)
+                  All Projects (11)
                 </button>
                 <button
                   type="button"
@@ -405,6 +409,18 @@ function ProjectsPage() {
                 >
                   <Smartphone className="h-3.5 w-3.5" />
                   02. Android App Development (4)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("workshop")}
+                  className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 text-xs font-semibold transition-all duration-150 ${
+                    activeTab === "workshop"
+                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                      : "border-border/80 bg-background/40 text-muted-foreground backdrop-blur-md hover:border-foreground/30 hover:text-foreground"
+                  }`}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  03. Workshop (1)
                 </button>
               </div>
 
@@ -593,6 +609,115 @@ function ProjectsPage() {
                   </article>
                 ))}
               </div>
+            </section>
+          )}
+
+          {/* PART 3: WORKSHOP SHOWCASE */}
+          {(activeTab === "all" || activeTab === "workshop") && (
+            <section id="workshop" className="scroll-mt-24">
+              <div className="mb-8 flex flex-col justify-between gap-3 border-b border-border/70 pb-5 sm:flex-row sm:items-end md:mb-10">
+                <div>
+                  <p className="mb-1.5 font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                    03. Flagship Educational Initiative
+                  </p>
+                  <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
+                    Workshop <span className="text-muted-foreground/75">&amp; AI Programs.</span>
+                  </h2>
+                </div>
+                <p className="max-w-md text-sm font-light leading-relaxed text-muted-foreground">
+                  Dedicated student-focused Generative AI education programs and technology event
+                  platforms engineered with dark architectural precision.
+                </p>
+              </div>
+
+              <article className="group overflow-hidden rounded-3xl border border-white/10 bg-[#050505] p-5 text-white shadow-2xl transition-all duration-200 hover:border-[#00D978]/50 sm:p-8 lg:p-10">
+                <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
+                  {/* Left: Dark Framed Official Logo & Workshop Scene */}
+                  <div className="space-y-4 lg:col-span-5">
+                    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#0B0F0D] p-6">
+                      <div
+                        aria-hidden="true"
+                        className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-[#00D978]/15 blur-3xl"
+                      />
+                      <div className="relative flex flex-col items-center justify-center text-center">
+                        <img
+                          src={WORKSHOP_ASSETS.logo}
+                          alt="AI FOR STUDENTS Workshop 2027 official logo"
+                          className="h-36 w-36 object-contain sm:h-44 sm:w-44"
+                        />
+                        <div className="mt-4 w-full border-t border-white/10 pt-3 font-mono text-[11px] uppercase tracking-[0.18em] text-[#00D978]">
+                          {EVENT_CONFIG.organizer} × {EVENT_CONFIG.mainSponsor}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="overflow-hidden rounded-2xl border border-white/10">
+                      <img
+                        src={WORKSHOP_ASSETS.overviewScene}
+                        alt="Students participating in Generative AI workshop"
+                        className="aspect-[16/9] w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right: Workshop Identity & Direct Route Link */}
+                  <div className="flex flex-col justify-between lg:col-span-7">
+                    <div>
+                      <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.2em] text-[#00D978]">
+                        <span className="h-1.5 w-1.5 bg-[#00D978]" />
+                        <span>{EVENT_CONFIG.edition} · FLAGSHIP EVENT</span>
+                      </div>
+
+                      <h3 className="mt-3 font-display text-3xl font-bold leading-tight tracking-tight text-white [text-wrap:balance] sm:text-4xl">
+                        {EVENT_CONFIG.eventName} —{" "}
+                        <span className="text-[#00D978]">Workshop 2027</span>
+                      </h3>
+
+                      <p className="mt-4 text-sm leading-relaxed text-[#A1A1AA] sm:text-base">
+                        {EVENT_CONFIG.theme} A complete 2-day student-focused Generative AI
+                        education and practical workshop covering smart prompting, academic
+                        productivity, creative ideation, and ethical AI literacy.
+                      </p>
+
+                      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-white/10 bg-[#0B0F0D] p-4">
+                          <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[#00D978]">
+                            <Cpu className="h-3.5 w-3.5" />
+                            <span>Curriculum Structure</span>
+                          </div>
+                          <p className="mt-1.5 text-xs font-medium text-white">
+                            8 Practical Modules · 14 Interactive Sessions
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-white/10 bg-[#0B0F0D] p-4">
+                          <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[#00D978]">
+                            <Calendar className="h-3.5 w-3.5" />
+                            <span>Schedule &amp; Venue</span>
+                          </div>
+                          <p className="mt-1.5 text-xs font-medium text-white">
+                            {EVENT_CONFIG.eventDateLabel}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6">
+                      <p className="text-xs italic text-[#A1A1AA]">
+                        &ldquo;{EVENT_CONFIG.tagline}&rdquo;
+                      </p>
+
+                      <Link
+                        to="/workshop"
+                        className="inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-[#00D978] px-6 text-xs font-bold uppercase tracking-wider text-[#050505] transition-all duration-200 hover:bg-[#00D978]/90 hover:shadow-[0_0_28px_rgba(0,217,120,0.35)]"
+                      >
+                        Open Workshop Page
+                        <ArrowUpRight className="h-4 w-4" />
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </article>
             </section>
           )}
         </div>

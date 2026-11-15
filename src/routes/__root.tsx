@@ -14,6 +14,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SiteFooter } from "../components/SiteFooter";
+import type { BeforeInstallPromptEvent } from "../hooks/use-pwa-install";
 
 function NotFoundComponent() {
   return (
@@ -98,7 +99,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       {
         rel: "stylesheet",
-        href: "https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&family=Outfit:wght@600;700&display=swap",
+        href: "https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter+Tight:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&family=Manrope:wght@600;700;800&family=Outfit:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
       },
       { rel: "manifest", href: "/manifest.webmanifest" },
       { rel: "icon", href: "/favicon.png", type: "image/png", sizes: "64x64" },
@@ -112,11 +113,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   errorComponent: ErrorComponent,
 });
 
+const DEV_SW_CLEANUP_SCRIPT = `(function(){try{if("serviceWorker" in navigator){var c=!!navigator.serviceWorker.controller;navigator.serviceWorker.getRegistrations().then(function(rs){var h=rs&&rs.length>0;return Promise.all(rs.map(function(r){return r.unregister();})).then(function(){if("caches" in window){return caches.keys().then(function(ks){return Promise.all(ks.map(function(k){return caches.delete(k);}));});}}).then(function(){if((c||h)&&!sessionStorage.getItem("__dev_sw_reset")){sessionStorage.setItem("__dev_sw_reset","1");location.reload();}});}).catch(function(){});}}catch(e){}})();`;
+
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head suppressHydrationWarning>
         <HeadContent />
+        {import.meta.env.DEV && (
+          <script
+            suppressHydrationWarning
+            dangerouslySetInnerHTML={{ __html: DEV_SW_CLEANUP_SCRIPT }}
+          />
+        )}
       </head>
       <body suppressHydrationWarning>
         {children}
@@ -135,13 +144,26 @@ function RootComponent() {
 
     const onBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      (window as Window & { __deferredPwaPrompt?: Event }).__deferredPwaPrompt = e;
+      window.__deferredPwaPrompt = e as BeforeInstallPromptEvent;
     };
 
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
 
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+      if (import.meta.env.PROD) {
+        navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+      } else {
+        navigator.serviceWorker
+          .getRegistrations()
+          .then((registrations) => Promise.all(registrations.map((reg) => reg.unregister())))
+          .catch(() => {});
+        if ("caches" in window) {
+          caches
+            .keys()
+            .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+            .catch(() => {});
+        }
+      }
     }
 
     return () => {
@@ -153,7 +175,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
       <Outlet />
-      {pathname !== "/" && <SiteFooter />}
+      {pathname !== "/" && !pathname.startsWith("/workshop") && <SiteFooter />}
     </QueryClientProvider>
   );
 }

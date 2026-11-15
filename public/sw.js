@@ -1,6 +1,5 @@
-const CACHE_NAME = "ss-sabbir-pwa-v1";
+const CACHE_NAME = "ss-sabbir-pwa-v2";
 const PRECACHE_ASSETS = [
-  "/",
   "/manifest.webmanifest",
   "/favicon.ico",
   "/favicon.png",
@@ -10,13 +9,32 @@ const PRECACHE_ASSETS = [
   "/pwa-maskable-512x512.png",
 ];
 
+const STATIC_CACHE_PREFIXES = ["/assets/", "/images/"];
+const STATIC_EXACT_PATHS = new Set(PRECACHE_ASSETS);
+
+function isDevModuleRequest(url) {
+  return (
+    url.pathname.startsWith("/node_modules/") ||
+    url.pathname.startsWith("/@") ||
+    url.pathname.startsWith("/src/") ||
+    url.pathname.startsWith("/__") ||
+    url.searchParams.has("v") ||
+    url.searchParams.has("t")
+  );
+}
+
+function isCacheableStaticAsset(url) {
+  if (STATIC_EXACT_PATHS.has(url.pathname)) return true;
+  return STATIC_CACHE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix));
+}
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches
       .open(CACHE_NAME)
       .then((cache) => cache.addAll(PRECACHE_ASSETS))
-      .catch(() => {})
+      .catch(() => {}),
   );
 });
 
@@ -31,10 +49,10 @@ self.addEventListener("activate", (event) => {
               return caches.delete(key);
             }
             return Promise.resolve(false);
-          })
-        )
+          }),
+        ),
       )
-      .then(() => self.clients.claim())
+      .then(() => self.clients.claim()),
   );
 });
 
@@ -45,33 +63,37 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // Network-first for HTML navigation requests, falling back to cache
+  // Never intercept Vite dev modules, source files, or versioned dependency chunks
+  if (isDevModuleRequest(url)) return;
+
+  // Network-first for HTML navigation requests
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
-          return response;
-        })
-        .catch(() => caches.match(request).then((res) => res || caches.match("/")))
+      fetch(request).catch(() =>
+        caches.match(request).then((res) => res || caches.match("/")),
+      ),
     );
     return;
   }
 
-  // Stale-while-revalidate for static assets
+  // Only cache immutable production assets & PWA icons
+  if (!isCacheableStaticAsset(url)) return;
+
   event.respondWith(
     caches.match(request).then((cached) => {
       const networkFetch = fetch(request)
         .then((response) => {
           if (response && response.status === 200) {
             const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+            caches
+              .open(CACHE_NAME)
+              .then((cache) => cache.put(request, copy))
+              .catch(() => {});
           }
           return response;
         })
         .catch(() => cached);
       return cached || networkFetch;
-    })
+    }),
   );
 });
