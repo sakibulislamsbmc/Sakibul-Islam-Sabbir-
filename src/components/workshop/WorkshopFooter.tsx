@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { ArrowLeft, ArrowUpRight, Mail } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Mail, Ticket } from "lucide-react";
 import { EVENT_CONFIG, WORKSHOP_ASSETS, WORKSHOP_NAV_LINKS } from "@/data/workshop-data";
 
 export function WorkshopFooter() {
@@ -35,9 +35,27 @@ export function WorkshopFooter() {
               </div>
             </div>
 
-            <div className="mt-6 space-y-2 text-xs leading-relaxed text-[#A1A1AA]">
+            {/* Organizer & Main Sponsor Logos */}
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <div className="flex h-12 items-center justify-center rounded-md bg-white px-3 py-1.5">
+                <img
+                  src={WORKSHOP_ASSETS.bismahsoftLogo}
+                  alt="Bismahsoft Ltd Logo"
+                  className="h-full w-auto max-w-[140px] object-contain"
+                />
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-md border border-white/15 bg-[#083A18]">
+                <img
+                  src={WORKSHOP_ASSETS.neerFashionLogo}
+                  alt="Neer Fashion Logo"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-1.5 text-xs leading-relaxed text-[#A1A1AA]">
               <p>
-                <strong className="text-white">Organizing Brand:</strong> {EVENT_CONFIG.organizer}
+                <strong className="text-white">Organized by:</strong> {EVENT_CONFIG.organizer}
               </p>
               <p className="italic text-[#A1A1AA]">&ldquo;{EVENT_CONFIG.tagline}&rdquo;</p>
               <p>
@@ -69,12 +87,23 @@ export function WorkshopFooter() {
             </ul>
           </div>
 
-          {/* Official Channels & Return */}
+          {/* Tickets, Contact & Return */}
           <div className="md:col-span-4">
             <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-[#00D978]">
-              CHANNELS &amp; PORTFOLIO
+              TICKETS &amp; INQUIRIES
             </p>
             <div className="mt-4 space-y-3 text-sm text-[#A1A1AA]">
+              <a
+                href={EVENT_CONFIG.ticketUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex h-10 items-center gap-2 rounded-md bg-[#00D978] px-4 text-xs font-extrabold uppercase tracking-wider text-[#050505] transition-colors hover:bg-[#00D978]/90"
+              >
+                <Ticket className="h-3.5 w-3.5" />
+                <span>Buy Ticket on SupportKori</span>
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </a>
+
               <a
                 href={`mailto:${EVENT_CONFIG.officialEmail}`}
                 className="flex items-center gap-2 text-white transition-colors hover:text-[#00D978]"
@@ -84,11 +113,11 @@ export function WorkshopFooter() {
               </a>
 
               <p className="text-xs leading-relaxed text-[#A1A1AA]">
-                Official Social Media Channels (Facebook, LinkedIn, YouTube) will be linked here as
-                Workshop 2027 announcements go live.
+                {EVENT_CONFIG.eventDateLabel} · {EVENT_CONFIG.eventVenueLabel}. Sponsors &amp; guest
+                speaker registrations are currently open.
               </p>
 
-              <div className="pt-2">
+              <div className="pt-1">
                 <Link
                   to="/projects"
                   className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-[#0B0F0D] px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:border-[#00D978]/50 hover:text-[#00D978]"
@@ -103,9 +132,9 @@ export function WorkshopFooter() {
         </div>
 
         <div className="mt-8 flex flex-col items-start justify-between gap-3 text-xs text-[#A1A1AA] sm:flex-row sm:items-center">
-          <p>&copy; 2027 AI FOR STUDENTS Workshop. All Rights Reserved.</p>
+          <p>&copy; 2027 AI FOR STUDENTS Workshop · Organized by Bismahsoft Ltd.</p>
           <p className="font-mono text-[11px] text-[#A1A1AA]">
-            Organized by {EVENT_CONFIG.organizer} · Sponsored by {EVENT_CONFIG.mainSponsor}
+            Main Sponsor: {EVENT_CONFIG.mainSponsor} · Google Meet Live · 9 Dec 9:30 PM
           </p>
         </div>
       </div>

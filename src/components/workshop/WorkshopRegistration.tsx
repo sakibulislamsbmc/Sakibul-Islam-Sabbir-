@@ -1,17 +1,19 @@
-import { ArrowUpRight, Calendar, Clock, MapPin, Ticket } from "lucide-react";
+import { ArrowUpRight, Calendar, Clock, ShieldCheck, Ticket, Video } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { EVENT_CONFIG } from "@/data/workshop-data";
+import { GoogleMeetFingertip } from "./GoogleMeetFingertip";
 import { Reveal } from "./Reveal";
 
-interface WorkshopRegistrationProps {
-  onOpenRegister: () => void;
-}
-
-export function WorkshopRegistration({ onOpenRegister }: WorkshopRegistrationProps) {
+export function WorkshopRegistration() {
   const details = [
-    { icon: Calendar, label: "Event Date", value: EVENT_CONFIG.eventDateLabel },
-    { icon: MapPin, label: "Event Venue", value: EVENT_CONFIG.eventVenueLabel },
-    { icon: Ticket, label: "Participation Fee", value: EVENT_CONFIG.registrationFeeLabel },
-    { icon: Clock, label: "Registration Deadline", value: EVENT_CONFIG.registrationDeadlineLabel },
+    { icon: Calendar, label: "Date & Time", value: EVENT_CONFIG.eventDateLabel },
+    { icon: Video, label: "Online Platform", value: EVENT_CONFIG.eventVenueLabel },
+    { icon: Clock, label: "Session Format", value: EVENT_CONFIG.eventFormatLabel },
+    {
+      icon: ShieldCheck,
+      label: "Organizer & Sponsor",
+      value: `${EVENT_CONFIG.organizer} · ${EVENT_CONFIG.mainSponsor}`,
+    },
   ];
 
   return (
@@ -30,34 +32,52 @@ export function WorkshopRegistration({ onOpenRegister }: WorkshopRegistrationPro
               <div className="lg:col-span-7">
                 <div className="mb-3 flex items-center gap-2.5 font-mono text-xs uppercase tracking-[0.22em] text-[#00D978]">
                   <span className="h-1.5 w-1.5 bg-[#00D978]" />
-                  <span>STUDENT ADMISSIONS &amp; REGISTRATION</span>
+                  <span>OFFICIAL SEAT &amp; TICKET BOOKING</span>
                 </div>
                 <h2 className="font-['Manrope',sans-serif] text-3xl font-extrabold leading-[1.08] tracking-tight text-white [text-wrap:balance] sm:text-4xl lg:text-5xl">
-                  BE READY FOR THE AI-POWERED FUTURE.
+                  BOOK YOUR SEAT FOR 9 DECEMBER AT 9:30 PM.
                 </h2>
                 <p className="mt-4 max-w-xl text-sm leading-relaxed text-[#A1A1AA] sm:text-base">
-                  Reserve your interest for {EVENT_CONFIG.eventName} — {EVENT_CONFIG.edition},
+                  Secure your ticket now for {EVENT_CONFIG.eventName} — {EVENT_CONFIG.edition},
                   organized by {EVENT_CONFIG.organizer} with Main Sponsor {EVENT_CONFIG.mainSponsor}
-                  . Official registration opens when venue and date details are confirmed.
+                  . Join our one-night live meeting right on Google Meet.
                 </p>
 
-                <div className="mt-8 flex flex-wrap items-center gap-4">
-                  <button
-                    type="button"
-                    onClick={onOpenRegister}
-                    className="inline-flex h-12 shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-md bg-[#00D978] px-7 text-xs font-extrabold uppercase tracking-[0.16em] text-[#050505] transition-all duration-200 hover:bg-[#00D978]/90 hover:shadow-[0_0_32px_rgba(0,217,120,0.4)]"
+                <div className="mt-6">
+                  <GoogleMeetFingertip />
+                </div>
+
+                <div className="mt-7 flex flex-wrap items-center gap-4">
+                  <a
+                    href={EVENT_CONFIG.ticketUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex h-12 shrink-0 items-center gap-2 whitespace-nowrap rounded-md bg-[#00D978] px-7 text-xs font-extrabold uppercase tracking-[0.16em] text-[#050505] transition-all duration-200 hover:bg-[#00D978]/90 hover:shadow-[0_0_32px_rgba(0,217,120,0.4)]"
                   >
-                    REGISTER NOW
+                    <Ticket className="h-4 w-4" />
+                    REGISTER NOW · BUY TICKET
                     <ArrowUpRight className="h-4 w-4" />
-                  </button>
+                  </a>
 
                   <a
-                    href={`mailto:${EVENT_CONFIG.officialEmail}?subject=AI%20FOR%20STUDENTS%20Workshop%202027%20Inquiry`}
+                    href={`mailto:${EVENT_CONFIG.officialEmail}?subject=Sponsor%20%2F%20Guest%20Speaker%20Inquiry%20-%20AI%20FOR%20STUDENTS%202027`}
                     className="inline-flex h-12 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-white/15 bg-[#0B0F0D] px-6 text-xs font-bold uppercase tracking-[0.16em] text-white transition-colors hover:border-[#00D978]/50 hover:text-[#00D978]"
                   >
-                    CONTACT ORGANIZER
+                    SPONSOR / GUEST REGISTRATION
                   </a>
                 </div>
+
+                <p className="mt-5 text-xs leading-relaxed text-[#A1A1AA]">
+                  Upcoming partners welcome:{" "}
+                  <strong className="text-white">Sponsors are currently being taken</strong> and{" "}
+                  <strong className="text-white">
+                    registrations are currently being taken for guest speakers
+                  </strong>
+                  .{" "}
+                  <Link to="/contact" className="font-semibold text-[#00D978] hover:underline">
+                    Reach out via Contact Page →
+                  </Link>
+                </p>
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:col-span-5">

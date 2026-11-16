@@ -17,8 +17,8 @@ export function WorkshopStats() {
               </h2>
             </div>
             <p className="max-w-md text-sm leading-relaxed text-[#A1A1AA]">
-              Official quantitative capacity and curriculum metrics will replace bracketed
-              placeholders once venue capacity is finalized.
+              Streamlined for maximum student participation—live on Google Meet on 9 December at
+              9:30 PM Night.
             </p>
           </div>
 
@@ -30,9 +30,9 @@ export function WorkshopStats() {
               >
                 <div>
                   <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#A1A1AA]">
-                    METRIC 0{idx + 1}
+                    HIGHLIGHT 0{idx + 1}
                   </p>
-                  <p className="mt-4 font-['Manrope',sans-serif] text-4xl font-extrabold tracking-tight text-[#00D978] tabular-nums sm:text-5xl">
+                  <p className="mt-4 font-['Manrope',sans-serif] text-3xl font-extrabold tracking-tight text-[#00D978] tabular-nums sm:text-4xl">
                     {stat.value}
                   </p>
                   <h3 className="mt-3 font-['Manrope',sans-serif] text-lg font-bold text-white">

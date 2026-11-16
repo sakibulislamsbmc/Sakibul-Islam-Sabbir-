@@ -3,6 +3,10 @@ import workshopHeroImg from "@/assets/images/workshop_hero_sculpture_17947834485
 
 export const WORKSHOP_ASSETS = {
   logo: "/images/ai-for-students-logo.png",
+  eventBanner: "/images/workshop-event-banner.jpg",
+  neerFashionLogo: "/images/neer-fashion-logo.jpg",
+  bismahsoftLogo: "/images/bismahsoft-logo.png",
+  mainSpeakerPhoto: "/images/speaker-sabbir.png",
   heroVisual: workshopHeroImg,
   overviewScene: workshopOverviewImg,
 } as const;
@@ -13,16 +17,18 @@ export const EVENT_CONFIG = {
   category: "Generative AI Education & Practical Workshop",
   targetAudience: "Students",
   theme: "Preparing Students for an AI-Powered Future.",
-  organizer: "Bizmahoot",
+  organizer: "Bismahsoft Ltd",
   mainSponsor: "Neer Fashion",
   tagline: "Innovation with Integrity Transform Your Dreams into Reality",
-  // Set an ISO 8601 date string (e.g. "2027-02-15T09:00:00+06:00") when the official event date is confirmed.
-  eventDateIso: null as string | null,
-  eventDateLabel: "[DATE TO BE ANNOUNCED]",
-  eventVenueLabel: "[VENUE TO BE ANNOUNCED]",
-  registrationFeeLabel: "[FREE / PAID — TBA]",
-  registrationDeadlineLabel: "[DEADLINE — TBA]",
-  officialEmail: "contact@bizmahoot.org",
+  ticketUrl: "https://www.supportkori.com/sakibul756/extras/ai-for-students-workshop-2027-gkam",
+  // 9 December 2026 (Wednesday), 9:30 PM Night (Bangladesh Standard Time UTC+06:00)
+  eventDateIso: "2026-12-09T21:30:00+06:00",
+  eventDateLabel: "9 December (Wednesday) · 9:30 PM Night",
+  eventFormatLabel: "One-Night Online Live Meeting",
+  eventVenueLabel: "Online Platform — Google Meet",
+  registrationFeeLabel: "Book Official Seat via SupportKori",
+  registrationDeadlineLabel: "Open Now · Until 9 Dec (9:30 PM)",
+  officialEmail: "sakibulislamsbmc@gmail.com",
 } as const;
 
 export const WORKSHOP_NAV_LINKS = [
@@ -109,60 +115,70 @@ export interface WorkshopStatItem {
 
 export const WORKSHOP_STATS: WorkshopStatItem[] = [
   {
-    value: "[XX]+",
-    label: "Expected Students",
-    note: "Final seat capacity announced with venue confirmation",
+    value: "1 Night",
+    label: "Live Online Meeting",
+    note: "9 December starting at 9:30 PM Night — focused single-evening session",
   },
   {
-    value: "[XX]",
-    label: "Practical Learning Sessions",
-    note: "Guided demonstrations and student Q&A across 2 days",
+    value: "Google Meet",
+    label: "Online Live Platform",
+    note: "Join effortlessly from your laptop or smartphone at your fingertips",
   },
   {
-    value: "[XX]+",
-    label: "AI Tools Explored",
-    note: "Curated workflows for study, creativity, and productivity",
+    value: "8 Tracks",
+    label: "Core AI Learning Areas",
+    note: "From Generative AI foundations & prompting to Vibe Coding & AI ethics",
   },
   {
-    value: "[XX]",
-    label: "Days of Learning",
-    note: "Structured foundation to real-world application",
+    value: "Open",
+    label: "Guest & Sponsor Calls",
+    note: "Registrations open for students, upcoming sponsors, and guest speakers",
   },
 ];
 
 export interface SpeakerSlotItem {
   id: string;
   name: string;
+  roleBadge: string;
   designation: string;
   organization: string;
   topicFocus: string;
-  status: string;
+  image: string | null;
+  isConfirmed: boolean;
 }
 
 export const SPEAKER_SLOTS: SpeakerSlotItem[] = [
   {
-    id: "speaker-1",
-    name: "[Speaker Name 01]",
-    designation: "[Keynote Educator · Generative AI]",
-    organization: "[Organization / Institution — TBA]",
-    topicFocus: "Foundations of Generative AI & Student Readiness",
-    status: "Editable Speaker Slot",
+    id: "speaker-main",
+    name: "Sakibul Islam Sabbir",
+    roleBadge: "MAIN SPEAKER",
+    designation: "Mentor - Generative AI · Designer & Vibe Coder",
+    organization: "Bismahsoft Ltd · AI FOR STUDENTS",
+    topicFocus:
+      "Understanding Generative AI, Smart Prompting, Creative Workflows & Practical Vibe Coding for Students",
+    image: "/images/speaker-sabbir.png",
+    isConfirmed: true,
   },
   {
-    id: "speaker-2",
-    name: "[Speaker Name 02]",
-    designation: "[Lead Mentor · Prompt Engineering]",
-    organization: "[Organization / Institution — TBA]",
-    topicFocus: "Smart Prompting & Study Productivity Workflows",
-    status: "Editable Speaker Slot",
+    id: "speaker-guest-1",
+    name: "Upcoming Guest Speaker",
+    roleBadge: "UPCOMING · REGISTRATIONS OPEN",
+    designation: "Guest Speaker & AI Practitioner",
+    organization: "Guest Speaker Registrations Currently Open",
+    topicFocus:
+      "Registrations are currently being taken for guest speakers sharing applied AI insights with students.",
+    image: null,
+    isConfirmed: false,
   },
   {
-    id: "speaker-3",
-    name: "[Speaker Name 03]",
-    designation: "[Creative Technologist · AI Ethics]",
-    organization: "[Organization / Institution — TBA]",
-    topicFocus: "Creative Ideation & Responsible AI Integrity",
-    status: "Editable Speaker Slot",
+    id: "speaker-guest-2",
+    name: "Upcoming Guest Speaker",
+    roleBadge: "UPCOMING · REGISTRATIONS OPEN",
+    designation: "Industry Mentor & Educator",
+    organization: "Guest Speaker Registrations Currently Open",
+    topicFocus: "Additional guest speakers will be announced prior to the 9 December live session.",
+    image: null,
+    isConfirmed: false,
   },
 ];
 
@@ -176,21 +192,21 @@ export interface GuestSlotItem {
 export const GUEST_SLOTS: GuestSlotItem[] = [
   {
     id: "guest-1",
-    role: "Chief Guest",
-    title: "[Guest Name — To Be Announced]",
-    affiliation: "Official announcement prior to Workshop 2027",
+    role: "Upcoming Guest Speakers",
+    title: "Guest Speaker Lineup — Upcoming",
+    affiliation: "Registrations are currently being taken for guest speakers.",
   },
   {
     id: "guest-2",
-    role: "Special Guest",
-    title: "[Guest Name — To Be Announced]",
-    affiliation: "Industry & Academic Leadership",
+    role: "Upcoming Sponsors",
+    title: "Additional Sponsor Slots — Open",
+    affiliation: "Sponsors are currently being taken alongside Main Sponsor Neer Fashion.",
   },
   {
     id: "guest-3",
-    role: "Honorary Guest",
-    title: "[Guest Name — To Be Announced]",
-    affiliation: "Sponsored & Supported Community Representative",
+    role: "Special Appearances",
+    title: "Academic & Tech Mentors — Upcoming",
+    affiliation: "Lineup will be updated ahead of 9 December, 9:30 PM Night.",
   },
 ];
 
@@ -204,27 +220,27 @@ export const PARTNER_CATEGORIES: PartnerCategoryItem[] = [
   {
     category: "Community Partners",
     description: "Student clubs, campus AI chapters, and youth technology collectives.",
-    status: "Open for Campus Clubs",
+    status: "Upcoming · Open for Clubs",
   },
   {
     category: "Media Partners",
     description: "Student publications, digital media outlets, and campus broadcasters.",
-    status: "Announcements Pending",
+    status: "Upcoming · Inquiries Open",
   },
   {
     category: "Technology Partners",
     description: "AI tooling platforms and technical infrastructure supporters.",
-    status: "Confirmation In Progress",
+    status: "Google Meet Live · Open",
   },
   {
     category: "Education Partners",
     description: "Universities, colleges, and student skill development institutions.",
-    status: "Open for Institutions",
+    status: "Upcoming · Open for Campuses",
   },
   {
-    category: "Supporting Partners",
-    description: "Organizations aligned with ethical AI literacy for students.",
-    status: "Partnership Inquiries Open",
+    category: "Supporting Sponsors",
+    description: "Brands aligned with ethical AI literacy for students.",
+    status: "Sponsors Being Taken",
   },
 ];
 
@@ -237,156 +253,76 @@ export interface ScheduleSessionItem {
   description: string;
 }
 
-export interface ScheduleDayItem {
-  id: "day-1" | "day-2";
-  dayLabel: string;
-  theme: string;
-  subtitle: string;
-  sessions: ScheduleSessionItem[];
-}
+export const ONE_NIGHT_SCHEDULE_META = {
+  dateLabel: "9 December (Wednesday) · Starting 9:30 PM Night",
+  platform: "Google Meet — One-Night Online Live Meeting",
+  clarificationNote:
+    "Schedule Clarification: Earlier community announcements mentioned a two-day format. To make attendance effortless for all students, this edition is organized as a focused, high-impact One-Night Online Live Meeting starting at 9:30 PM on Google Meet.",
+} as const;
 
-export const WORKSHOP_SCHEDULE: ScheduleDayItem[] = [
+export const LIVE_NIGHT_SESSIONS: ScheduleSessionItem[] = [
   {
-    id: "day-1",
-    dayLabel: "DAY 01",
-    theme: "DISCOVER & UNDERSTAND",
-    subtitle: "Foundations of Generative AI, tool literacy, and structured prompting",
-    sessions: [
-      {
-        id: "d1-s1",
-        time: "[09:00 AM — TBA]",
-        title: "Opening Ceremony",
-        category: "Ceremony",
-        speaker: "Bizmahoot Organizing Team & Neer Fashion",
-        description:
-          "Welcome remarks introducing the AI FOR STUDENTS Workshop 2027 vision, partner acknowledgments, and learning roadmap.",
-      },
-      {
-        id: "d1-s2",
-        time: "[09:45 AM — TBA]",
-        title: "Welcome Session: The AI Era for Students",
-        category: "Keynote",
-        speaker: "[Keynote Speaker — TBA]",
-        description:
-          "Exploring how Generative AI is reshaping education, problem-solving, and early-career opportunities for students.",
-      },
-      {
-        id: "d1-s3",
-        time: "[10:30 AM — TBA]",
-        title: "Introduction to Generative AI",
-        category: "Core Concept",
-        speaker: "[Workshop Mentor — TBA]",
-        description:
-          "Clear, accessible breakdown of how generative models process context, synthesize information, and assist human thinking.",
-      },
-      {
-        id: "d1-s4",
-        time: "[11:45 AM — TBA]",
-        title: "How AI Thinks & Responds",
-        category: "Core Concept",
-        speaker: "[Workshop Mentor — TBA]",
-        description:
-          "Understanding tokens, context windows, hallucinations, and why human judgment remains central when working with AI.",
-      },
-      {
-        id: "d1-s5",
-        time: "[02:00 PM — TBA]",
-        title: "Hands-On AI Prompting Fundamentals",
-        category: "Practical Lab",
-        speaker: "[Lead Instructor — TBA]",
-        description:
-          "Interactive exercises in framing roles, constraints, examples, and iterative refinement for reliable student outputs.",
-      },
-      {
-        id: "d1-s6",
-        time: "[03:30 PM — TBA]",
-        title: "Live Demonstration of AI Tools",
-        category: "Live Demo",
-        speaker: "[Technical Mentor — TBA]",
-        description:
-          "Guided walkthrough of modern AI tools for study synthesis, structured research, visual ideation, and workflow support.",
-      },
-      {
-        id: "d1-s7",
-        time: "[04:30 PM — TBA]",
-        title: "Student Q&A Session",
-        category: "Interactive Forum",
-        speaker: "Day 01 Mentors Panel",
-        description:
-          "Open floor for student questions covering tool selection, study scenarios, and practical Day 01 concepts.",
-      },
-    ],
+    id: "live-1",
+    time: "09:30 PM",
+    title: "Opening & Welcome: Connect. Learn. Lead with AI",
+    category: "Opening Session",
+    speaker: "Bismahsoft Ltd & Main Sponsor Neer Fashion",
+    description:
+      "Live Google Meet kickoff welcoming students, introducing Bismahsoft Ltd's mission, and acknowledging Main Sponsor Neer Fashion and upcoming partners.",
   },
   {
-    id: "day-2",
-    dayLabel: "DAY 02",
-    theme: "EXPLORE & APPLY",
-    subtitle: "Smart study workflows, creativity, ethical usage, and career readiness",
-    sessions: [
-      {
-        id: "d2-s1",
-        time: "[09:30 AM — TBA]",
-        title: "AI for Study & Academic Productivity",
-        category: "Workshop Module",
-        speaker: "[Academic Mentor — TBA]",
-        description:
-          "Building study summaries, concept breakdowns, flashcards, and time-blocking workflows without sacrificing deep learning.",
-      },
-      {
-        id: "d2-s2",
-        time: "[10:45 AM — TBA]",
-        title: "AI for Creative Thinking & Design Ideas",
-        category: "Creative Lab",
-        speaker: "[Creative Technologist — TBA]",
-        description:
-          "Using generative tools as a creative collaborator for presentations, visual concepts, and original project ideation.",
-      },
-      {
-        id: "d2-s3",
-        time: "[12:00 PM — TBA]",
-        title: "AI Tools for Future Career Preparation",
-        category: "Career Readiness",
-        speaker: "[Industry Mentor — TBA]",
-        description:
-          "How students across technical and non-technical disciplines can develop AI fluency for portfolios, projects, and teams.",
-      },
-      {
-        id: "d2-s4",
-        time: "[02:00 PM — TBA]",
-        title: "Ethical & Responsible AI Use",
-        category: "Ethics & Integrity",
-        speaker: "[Workshop Mentor — TBA]",
-        description:
-          "Aligning with Bizmahoot's integrity ethos: avoiding plagiarism, verifying facts, protecting privacy, and owning your work.",
-      },
-      {
-        id: "d2-s5",
-        time: "[03:15 PM — TBA]",
-        title: "Interactive Student Activity",
-        category: "Collaborative Activity",
-        speaker: "All Facilitators",
-        description:
-          "Guided team challenge where students apply structured prompting and critical verification to a real study scenario.",
-      },
-      {
-        id: "d2-s6",
-        time: "[04:15 PM — TBA]",
-        title: "Career & Learning Roadmap",
-        category: "Action Plan",
-        speaker: "[Keynote Mentor — TBA]",
-        description:
-          "A practical 90-day post-workshop learning roadmap for continuing independent practice after Workshop 2027.",
-      },
-      {
-        id: "d2-s7",
-        time: "[05:00 PM — TBA]",
-        title: "Closing & Certificate Moment",
-        category: "Closing Ceremony",
-        speaker: "Bizmahoot & Neer Fashion",
-        description:
-          "Closing address, sponsor appreciation, group reflections, and certificate distribution moment for participants.",
-      },
-    ],
+    id: "live-2",
+    time: "09:45 PM",
+    title: "Understanding Generative AI & How AI Responds",
+    category: "Core Foundation",
+    speaker: "Sakibul Islam Sabbir (Mentor - Generative AI)",
+    description:
+      "Clear breakdown of what Generative AI is, how models interpret context and prompts, and why human reasoning guides every strong result.",
+  },
+  {
+    id: "live-3",
+    time: "10:10 PM",
+    title: "Smart Prompting & Live AI Tools Demonstration",
+    category: "Hands-On Demo",
+    speaker: "Sakibul Islam Sabbir",
+    description:
+      "Practical live demonstration showing how structured prompting transforms study research, content workflows, and problem-solving in real time.",
+  },
+  {
+    id: "live-4",
+    time: "10:35 PM",
+    title: "AI for Creativity, Design & Vibe Coding Workflows",
+    category: "Designer & Vibe Coder",
+    speaker: "Sakibul Islam Sabbir & Upcoming Guest Speakers",
+    description:
+      "Exploring creative ideation, visual design workflows, and beginner-friendly Vibe Coding concepts so students can turn ideas into real projects.",
+  },
+  {
+    id: "live-5",
+    time: "11:00 PM",
+    title: "AI for Smart Study, Productivity & Future Skills",
+    category: "Academic & Career",
+    speaker: "Main Speaker & Guest Mentor Panel",
+    description:
+      "Actionable frameworks for organizing academic notes, accelerating learning safely, and preparing for AI-augmented careers.",
+  },
+  {
+    id: "live-6",
+    time: "11:20 PM",
+    title: "Responsible AI Usage & Ethical Integrity",
+    category: "Ethics & Integrity",
+    speaker: "Bismahsoft Ltd Organizing Panel",
+    description:
+      "Fact-checking outputs, protecting data privacy, avoiding over-reliance, and practicing innovation with integrity.",
+  },
+  {
+    id: "live-7",
+    time: "11:35 PM",
+    title: "Live Student Q&A, Roadmap & Certificate Instructions",
+    category: "Interactive Closing",
+    speaker: "Sakibul Islam Sabbir & Hosts",
+    description:
+      "Open Google Meet Q&A with students, 90-day self-learning roadmap, and official participation certificate distribution steps.",
   },
 ];
 
@@ -407,7 +343,7 @@ export const WORKSHOP_BENEFITS: BenefitItem[] = [
     number: "02",
     title: "Practical AI Understanding",
     description:
-      "Move beyond surface hype through live demonstrations, prompt frameworks, and guided hands-on thinking.",
+      "Move beyond surface hype through live Google Meet demonstrations, prompt frameworks, and guided hands-on thinking.",
   },
   {
     number: "03",
@@ -419,7 +355,7 @@ export const WORKSHOP_BENEFITS: BenefitItem[] = [
     number: "04",
     title: "Future Career Awareness",
     description:
-      "Understand how AI fluency complements engineering, design, communication, management, and modern careers.",
+      "Understand how AI fluency and Vibe Coding complement design, engineering, research, and modern careers.",
   },
   {
     number: "05",
@@ -431,7 +367,7 @@ export const WORKSHOP_BENEFITS: BenefitItem[] = [
     number: "06",
     title: "Certificate of Participation",
     description:
-      "Receive official Workshop 2027 recognition documenting your active participation in the Generative AI learning tracks.",
+      "Receive official Workshop 2027 recognition documenting your participation in the live Generative AI session.",
   },
 ];
 
@@ -442,43 +378,43 @@ export interface FAQItem {
 
 export const WORKSHOP_FAQS: FAQItem[] = [
   {
-    question: "Who can join this workshop?",
+    question: "When and where will the workshop take place?",
     answer:
-      "AI FOR STUDENTS — Workshop 2027 is specifically designed for school, college, and university students from any academic discipline who want to understand Generative AI practically and responsibly.",
+      "The workshop takes place on 9 December (Wednesday) at 9:30 PM Night as a One-Night Online Live Meeting hosted on Google Meet.",
+  },
+  {
+    question: "Why did an earlier message mention two days?",
+    answer:
+      "While early drafts mentioned a two-day outline, the official session has been streamlined into a single focused One-Night Online Live Meeting on 9 December at 9:30 PM via Google Meet so students can complete everything live in one evening.",
+  },
+  {
+    question: "How do I buy a ticket or register?",
+    answer:
+      "Click any 'Register Now' or 'Buy Ticket' button on this page to purchase your official ticket directly through SupportKori.",
+  },
+  {
+    question: "Who is the Main Speaker?",
+    answer:
+      "Sakibul Islam Sabbir — Mentor - Generative AI, Designer & Vibe Coder — will lead the main session. Additional guest speakers are upcoming and guest speaker registrations are currently open.",
+  },
+  {
+    question: "Who organizes and sponsors the workshop?",
+    answer:
+      "AI FOR STUDENTS — Workshop 2027 is organized by Bismahsoft Ltd ('Innovation with Integrity Transform Your Dreams into Reality'), with Neer Fashion as the Main Sponsor. Additional sponsor slots are currently open.",
   },
   {
     question: "Do I need prior coding or AI knowledge?",
     answer:
-      "No prior coding or AI experience is required. All foundational concepts, prompting techniques, and tool workflows are taught step-by-step in beginner-friendly language.",
-  },
-  {
-    question: "What is Generative AI?",
-    answer:
-      "Generative AI refers to modern artificial intelligence systems capable of generating structured text, explanations, summaries, code, visuals, and creative concepts based on human prompts and context.",
-  },
-  {
-    question: "Who organizes the workshop?",
-    answer:
-      "Workshop 2027 is organized by Bizmahoot under the guiding ethos 'Innovation with Integrity Transform Your Dreams into Reality'.",
-  },
-  {
-    question: "Who is the main sponsor?",
-    answer:
-      "Neer Fashion is the proud Main Sponsor supporting AI FOR STUDENTS — Workshop 2027 and student access to future-ready AI education.",
+      "No prior coding or AI experience is required. All foundational concepts, prompting techniques, and creative workflows are taught step-by-step in beginner-friendly language.",
   },
   {
     question: "Will participants receive certificates?",
     answer:
-      "Yes. Eligible participants who complete the workshop sessions will receive an official Certificate of Participation during the closing certificate moment.",
+      "Yes. Registered participants who attend the live Google Meet session on 9 December will receive certificate instructions during the closing segment.",
   },
   {
-    question: "What should students bring?",
+    question: "Can sponsors or guest speakers still join?",
     answer:
-      "Students are encouraged to bring a notebook, pen, and a laptop or smartphone (if available) for interactive activities. Full venue checklists will be shared once the schedule is finalized.",
-  },
-  {
-    question: "How can I register?",
-    answer:
-      "Official registration opens as soon as Bizmahoot announces the confirmed 2027 event date, venue, and fee details. Use the Register Now action on this page to view updates or contact the organizing team.",
+      "Yes! Other sponsors and guest speakers are upcoming—sponsors are currently being taken and registrations are open for guest speakers. Reach out via email or the Contact page.",
   },
 ];

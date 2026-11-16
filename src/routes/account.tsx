@@ -298,9 +298,13 @@ function AccountPage() {
   const [newBillingMethod, setNewBillingMethod] = useState<BillingMethod>("bKash");
   const [newBillingReference, setNewBillingReference] = useState("");
   const [newBillingStatus, setNewBillingStatus] = useState<BillingStatus>("Paid");
-  const [newOrderDate, setNewOrderDate] = useState(todayIsoDate());
+  const [newOrderDate, setNewOrderDate] = useState("");
   const [newDeliveryEstimate, setNewDeliveryEstimate] = useState("14 Days");
   const [newProjectNotes, setNewProjectNotes] = useState("");
+
+  useEffect(() => {
+    setNewOrderDate((prev) => prev || todayIsoDate());
+  }, []);
 
   // Track Auth state
   useEffect(() => {

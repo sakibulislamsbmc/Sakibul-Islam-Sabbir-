@@ -1,4 +1,4 @@
-import { Compass, Target } from "lucide-react";
+import { Compass, Target, Video } from "lucide-react";
 import { WORKSHOP_ASSETS } from "@/data/workshop-data";
 import { Reveal } from "./Reveal";
 
@@ -28,15 +28,31 @@ export function WorkshopOverview() {
                   <strong className="font-semibold text-white">
                     AI FOR STUDENTS — Workshop 2027
                   </strong>{" "}
-                  is designed to introduce students to Generative AI in a clear, practical, and
-                  inspiring way. Instead of treating AI as something intimidating or technical, this
-                  workshop helps students understand how modern AI works and how it can be used
-                  responsibly to boost learning, productivity, and creativity.
+                  is organized as a focused{" "}
+                  <strong className="font-semibold text-white">
+                    One-Night Online Live Meeting on 9 December at 9:30 PM Night via Google Meet
+                  </strong>{" "}
+                  (streamlined from earlier two-day drafts so students everywhere can complete the
+                  entire practical experience in one live evening).
+                </p>
+              </div>
+
+              {/* Format Callout */}
+              <div className="mt-6 rounded-lg border border-[#00D978]/30 bg-[#050505] p-4">
+                <div className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00D978]">
+                  <Video className="h-4 w-4" />
+                  <span>LIVE ONE-NIGHT ONLINE FORMAT</span>
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-[#A1A1AA] sm:text-sm">
+                  Everything happens live on <strong className="text-white">Google Meet</strong>{" "}
+                  starting <strong className="text-white">9 December at 9:30 PM Night</strong>
+                  —making direct learning, live AI tool demos, and Q&amp;A effortless at your
+                  fingertips.
                 </p>
               </div>
 
               {/* Mission & Vision Cards */}
-              <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="rounded-lg border border-white/10 bg-[#050505] p-5">
                   <div className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-[#00D978]">
                     <Target className="h-4 w-4" />
@@ -72,7 +88,7 @@ export function WorkshopOverview() {
                   <div className="absolute bottom-4 left-4 right-4 flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#00D978]">
-                        HANDS-ON STUDENT ENVIRONMENT
+                        9 DECEMBER · 9:30 PM NIGHT · GOOGLE MEET
                       </p>
                       <p className="mt-1 font-['Manrope',sans-serif] text-base font-bold text-white sm:text-lg">
                         Clear concepts. Practical prompts. Ethical foundations.

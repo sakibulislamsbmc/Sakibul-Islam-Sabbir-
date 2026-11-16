@@ -12,9 +12,7 @@ declare global {
 }
 
 export function usePWAInstall() {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(() =>
-    typeof window !== "undefined" ? (window.__deferredPwaPrompt ?? null) : null,
-  );
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [justInstalled, setJustInstalled] = useState(false);

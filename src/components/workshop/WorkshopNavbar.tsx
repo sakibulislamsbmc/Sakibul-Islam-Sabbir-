@@ -3,11 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ArrowUpRight, Menu, X } from "lucide-react";
 import { EVENT_CONFIG, WORKSHOP_ASSETS, WORKSHOP_NAV_LINKS } from "@/data/workshop-data";
 
-interface WorkshopNavbarProps {
-  onOpenRegister: () => void;
-}
-
-export function WorkshopNavbar({ onOpenRegister }: WorkshopNavbarProps) {
+export function WorkshopNavbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleAnchorClick = (href: string) => {
@@ -53,7 +49,7 @@ export function WorkshopNavbar({ onOpenRegister }: WorkshopNavbarProps) {
                 {EVENT_CONFIG.eventName}
               </p>
               <p className="mt-1 font-mono text-[10px] tracking-[0.18em] text-[#00D978]">
-                {EVENT_CONFIG.edition}
+                9 DEC · 9:30 PM NIGHT
               </p>
             </div>
           </a>
@@ -76,16 +72,17 @@ export function WorkshopNavbar({ onOpenRegister }: WorkshopNavbarProps) {
           ))}
         </nav>
 
-        {/* Right: Primary Register CTA + Mobile Hamburger */}
+        {/* Right: Direct Ticket Purchase CTA + Mobile Hamburger */}
         <div className="flex shrink-0 items-center gap-2.5">
-          <button
-            type="button"
-            onClick={onOpenRegister}
-            className="hidden h-9 shrink-0 cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-md bg-[#00D978] px-4 text-xs font-bold tracking-wider text-[#050505] transition-all duration-200 hover:bg-[#00D978]/90 hover:shadow-[0_0_24px_rgba(0,217,120,0.35)] sm:inline-flex"
+          <a
+            href={EVENT_CONFIG.ticketUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hidden h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md bg-[#00D978] px-4 text-xs font-bold tracking-wider text-[#050505] transition-all duration-200 hover:bg-[#00D978]/90 hover:shadow-[0_0_24px_rgba(0,217,120,0.35)] sm:inline-flex"
           >
-            REGISTER NOW
+            BUY TICKET
             <ArrowUpRight className="h-3.5 w-3.5" />
-          </button>
+          </a>
 
           <button
             type="button"
@@ -119,17 +116,16 @@ export function WorkshopNavbar({ onOpenRegister }: WorkshopNavbarProps) {
             ))}
 
             <div className="mt-3 flex flex-col gap-2 border-t border-white/10 pt-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setMobileOpen(false);
-                  onOpenRegister();
-                }}
-                className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-[#00D978] px-4 text-xs font-bold tracking-wider text-[#050505]"
+              <a
+                href={EVENT_CONFIG.ticketUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setMobileOpen(false)}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-[#00D978] px-4 text-xs font-bold tracking-wider text-[#050505]"
               >
-                REGISTER NOW
+                REGISTER &amp; BUY TICKET
                 <ArrowUpRight className="h-3.5 w-3.5" />
-              </button>
+              </a>
               <Link
                 to="/projects"
                 onClick={() => setMobileOpen(false)}

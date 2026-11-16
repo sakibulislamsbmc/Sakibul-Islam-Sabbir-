@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
 import { WorkshopNavbar } from "@/components/workshop/WorkshopNavbar";
 import { WorkshopHero } from "@/components/workshop/WorkshopHero";
 import { WorkshopCountdownOrganizers } from "@/components/workshop/WorkshopCountdownOrganizers";
@@ -15,25 +14,24 @@ import { WorkshopBenefits } from "@/components/workshop/WorkshopBenefits";
 import { WorkshopRegistration } from "@/components/workshop/WorkshopRegistration";
 import { WorkshopFAQ } from "@/components/workshop/WorkshopFAQ";
 import { WorkshopFooter } from "@/components/workshop/WorkshopFooter";
-import { WorkshopRegistrationModal } from "@/components/workshop/WorkshopRegistrationModal";
 
 export const Route = createFileRoute("/workshop")({
   head: () => ({
     meta: [
-      { title: "AI FOR STUDENTS — Workshop 2027 | Bizmahoot × Neer Fashion" },
+      { title: "AI FOR STUDENTS — Workshop 2027 | Bismahsoft Ltd × Neer Fashion" },
       {
         name: "description",
         content:
-          "Preparing Students for an AI-Powered Future. Generative AI Education & Practical Workshop 2027 organized by Bizmahoot and sponsored by Neer Fashion.",
+          "One-Night Online Live Meeting on 9 December at 9:30 PM Night via Google Meet. Main Speaker: Sakibul Islam Sabbir. Organized by Bismahsoft Ltd, Main Sponsor Neer Fashion.",
       },
       {
         property: "og:title",
-        content: "AI FOR STUDENTS — Workshop 2027",
+        content: "AI FOR STUDENTS — Workshop 2027 | 9 December · 9:30 PM Night",
       },
       {
         property: "og:description",
         content:
-          "Hands-on student Generative AI education, smart prompting, productivity workflows, and ethical AI literacy. Organized by Bizmahoot, Main Sponsor Neer Fashion.",
+          "Join our One-Night Online Live Meeting on Google Meet. Generative AI education, smart prompting, and practical workflows with Sakibul Islam Sabbir.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -43,14 +41,12 @@ export const Route = createFileRoute("/workshop")({
 });
 
 function WorkshopPage() {
-  const [registerModalOpen, setRegisterModalOpen] = useState(false);
-
   return (
     <div className="min-h-screen scroll-smooth bg-[#050505] font-['Plus_Jakarta_Sans','Hind_Siliguri',sans-serif] text-white antialiased selection:bg-[#00D978] selection:text-[#050505]">
-      <WorkshopNavbar onOpenRegister={() => setRegisterModalOpen(true)} />
+      <WorkshopNavbar />
 
       <main>
-        <WorkshopHero onOpenRegister={() => setRegisterModalOpen(true)} />
+        <WorkshopHero />
         <WorkshopCountdownOrganizers />
         <WorkshopSponsors />
         <WorkshopOverview />
@@ -61,16 +57,11 @@ function WorkshopPage() {
         <WorkshopPartners />
         <WorkshopSchedule />
         <WorkshopBenefits />
-        <WorkshopRegistration onOpenRegister={() => setRegisterModalOpen(true)} />
+        <WorkshopRegistration />
         <WorkshopFAQ />
       </main>
 
       <WorkshopFooter />
-
-      <WorkshopRegistrationModal
-        open={registerModalOpen}
-        onClose={() => setRegisterModalOpen(false)}
-      />
     </div>
   );
 }

@@ -632,40 +632,44 @@ function ProjectsPage() {
 
               <article className="group overflow-hidden rounded-3xl border border-white/10 bg-[#050505] p-5 text-white shadow-2xl transition-all duration-200 hover:border-[#00D978]/50 sm:p-8 lg:p-10">
                 <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
-                  {/* Left: Dark Framed Official Logo & Workshop Scene */}
+                  {/* Left: Official Event Banner & Workshop Crest */}
                   <div className="space-y-4 lg:col-span-5">
-                    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#0B0F0D] p-6">
-                      <div
-                        aria-hidden="true"
-                        className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-[#00D978]/15 blur-3xl"
+                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#0B0F0D] p-2">
+                      <img
+                        src={WORKSHOP_ASSETS.eventBanner}
+                        alt="AI FOR STUDENTS Workshop 2027 — 9 Dec Wednesday Online Workshop For Students banner"
+                        className="aspect-[3264/1446] w-full rounded-xl object-cover transition-transform duration-500 group-hover:scale-[1.02]"
                       />
-                      <div className="relative flex flex-col items-center justify-center text-center">
-                        <img
-                          src={WORKSHOP_ASSETS.logo}
-                          alt="AI FOR STUDENTS Workshop 2027 official logo"
-                          className="h-36 w-36 object-contain sm:h-44 sm:w-44"
-                        />
-                        <div className="mt-4 w-full border-t border-white/10 pt-3 font-mono text-[11px] uppercase tracking-[0.18em] text-[#00D978]">
-                          {EVENT_CONFIG.organizer} × {EVENT_CONFIG.mainSponsor}
-                        </div>
-                      </div>
                     </div>
 
-                    <div className="overflow-hidden rounded-2xl border border-white/10">
+                    <div className="relative flex items-center gap-4 overflow-hidden rounded-2xl border border-white/10 bg-[#0B0F0D] p-4">
                       <img
-                        src={WORKSHOP_ASSETS.overviewScene}
-                        alt="Students participating in Generative AI workshop"
-                        className="aspect-[16/9] w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+                        src={WORKSHOP_ASSETS.logo}
+                        alt="AI FOR STUDENTS Workshop 2027 official logo"
+                        className="h-16 w-16 shrink-0 object-contain"
                       />
+                      <div className="min-w-0">
+                        <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-[#00D978]">
+                          {EVENT_CONFIG.organizer} × {EVENT_CONFIG.mainSponsor}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-white">
+                          Main Speaker: Sakibul Islam Sabbir
+                        </p>
+                        <p className="text-[11px] text-[#A1A1AA]">
+                          Mentor - Generative AI · Designer &amp; Vibe Coder
+                        </p>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Right: Workshop Identity & Direct Route Link */}
+                  {/* Right: Workshop Identity & Action Links */}
                   <div className="flex flex-col justify-between lg:col-span-7">
                     <div>
                       <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-[0.2em] text-[#00D978]">
                         <span className="h-1.5 w-1.5 bg-[#00D978]" />
-                        <span>{EVENT_CONFIG.edition} · FLAGSHIP EVENT</span>
+                        <span>
+                          {EVENT_CONFIG.edition} · {EVENT_CONFIG.eventFormatLabel}
+                        </span>
                       </div>
 
                       <h3 className="mt-3 font-display text-3xl font-bold leading-tight tracking-tight text-white [text-wrap:balance] sm:text-4xl">
@@ -674,26 +678,30 @@ function ProjectsPage() {
                       </h3>
 
                       <p className="mt-4 text-sm leading-relaxed text-[#A1A1AA] sm:text-base">
-                        {EVENT_CONFIG.theme} A complete 2-day student-focused Generative AI
-                        education and practical workshop covering smart prompting, academic
-                        productivity, creative ideation, and ethical AI literacy.
+                        {EVENT_CONFIG.theme} Streamlined as a{" "}
+                        <strong className="font-semibold text-white">
+                          One-Night Online Live Meeting
+                        </strong>{" "}
+                        on Google Meet covering Generative AI fundamentals, smart prompting,
+                        creative Vibe Coding workflows, and ethical AI literacy. Sponsors and guest
+                        speaker registrations are currently open.
                       </p>
 
                       <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <div className="rounded-xl border border-white/10 bg-[#0B0F0D] p-4">
                           <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[#00D978]">
                             <Cpu className="h-3.5 w-3.5" />
-                            <span>Curriculum Structure</span>
+                            <span>Live Format &amp; Platform</span>
                           </div>
                           <p className="mt-1.5 text-xs font-medium text-white">
-                            8 Practical Modules · 14 Interactive Sessions
+                            {EVENT_CONFIG.eventVenueLabel} · 8 AI Modules
                           </p>
                         </div>
 
                         <div className="rounded-xl border border-white/10 bg-[#0B0F0D] p-4">
                           <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-wider text-[#00D978]">
                             <Calendar className="h-3.5 w-3.5" />
-                            <span>Schedule &amp; Venue</span>
+                            <span>Schedule &amp; Night Time</span>
                           </div>
                           <p className="mt-1.5 text-xs font-medium text-white">
                             {EVENT_CONFIG.eventDateLabel}
@@ -707,13 +715,25 @@ function ProjectsPage() {
                         &ldquo;{EVENT_CONFIG.tagline}&rdquo;
                       </p>
 
-                      <Link
-                        to="/workshop"
-                        className="inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-[#00D978] px-6 text-xs font-bold uppercase tracking-wider text-[#050505] transition-all duration-200 hover:bg-[#00D978]/90 hover:shadow-[0_0_28px_rgba(0,217,120,0.35)]"
-                      >
-                        Open Workshop Page
-                        <ArrowUpRight className="h-4 w-4" />
-                      </Link>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <a
+                          href={EVENT_CONFIG.ticketUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-[#00D978]/50 bg-[#0B0F0D] px-5 text-xs font-bold uppercase tracking-wider text-[#00D978] transition-all duration-200 hover:bg-[#00D978]/15"
+                        >
+                          Buy Ticket
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+
+                        <Link
+                          to="/workshop"
+                          className="inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-[#00D978] px-6 text-xs font-bold uppercase tracking-wider text-[#050505] transition-all duration-200 hover:bg-[#00D978]/90 hover:shadow-[0_0_28px_rgba(0,217,120,0.35)]"
+                        >
+                          Open Workshop Page
+                          <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 </div>
