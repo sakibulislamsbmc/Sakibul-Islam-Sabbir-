@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import {
   ArrowUpRight,
+  BookOpen,
   Calendar,
   CheckCircle2,
   Code2,
@@ -12,10 +13,13 @@ import {
   Menu,
   Smartphone,
   Sparkles,
+  Star,
+  Users,
   X,
 } from "lucide-react";
 import { MobileBottomNav, MobileHeaderMenu } from "@/components/MobileNavigation";
 import { PWAInstallButton } from "@/components/PWAInstallButton";
+import { QURAN_COURSE } from "@/data/courses-data";
 import { EVENT_CONFIG, WORKSHOP_ASSETS } from "@/data/workshop-data";
 
 export const Route = createFileRoute("/projects")({
@@ -258,7 +262,9 @@ const ANDROID_PROJECTS: ProjectShowcaseItem[] = [
 
 function ProjectsPage() {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"all" | "website" | "android" | "workshop">("all");
+  const [activeTab, setActiveTab] = useState<
+    "all" | "website" | "android" | "workshop" | "courses"
+  >("all");
   const [selectedProject, setSelectedProject] = useState<ProjectShowcaseItem | null>(null);
 
   return (
@@ -384,7 +390,7 @@ function ProjectsPage() {
                       : "border-border/80 bg-background/40 text-muted-foreground backdrop-blur-md hover:border-foreground/30 hover:text-foreground"
                   }`}
                 >
-                  All Projects (11)
+                  All Projects (12)
                 </button>
                 <button
                   type="button"
@@ -421,6 +427,18 @@ function ProjectsPage() {
                 >
                   <Sparkles className="h-3.5 w-3.5" />
                   03. Workshop (1)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("courses")}
+                  className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 text-xs font-semibold transition-all duration-150 ${
+                    activeTab === "courses"
+                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                      : "border-border/80 bg-background/40 text-muted-foreground backdrop-blur-md hover:border-foreground/30 hover:text-foreground"
+                  }`}
+                >
+                  <BookOpen className="h-3.5 w-3.5" />
+                  04. Courses (1)
                 </button>
               </div>
 
@@ -738,6 +756,110 @@ function ProjectsPage() {
                   </div>
                 </div>
               </article>
+            </section>
+          )}
+
+          {/* PART 4: COURSES SHOWCASE */}
+          {(activeTab === "all" || activeTab === "courses") && (
+            <section id="courses" className="scroll-mt-24">
+              <div className="mb-8 flex flex-col justify-between gap-3 border-b border-border/70 pb-5 sm:flex-row sm:items-end md:mb-10">
+                <div>
+                  <p className="mb-1.5 font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                    04. Online Courses
+                  </p>
+                  <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
+                    Courses <span className="text-muted-foreground/75">&amp; Learning.</span>
+                  </h2>
+                </div>
+                <p className="max-w-md text-sm font-light leading-relaxed text-muted-foreground">
+                  Click the course card below to enter the full-screen course dashboard with
+                  sequential classes and timed MCQ quizzes.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                <Link
+                  to="/courses"
+                  className="group flex flex-col rounded-3xl border border-border/80 bg-background/55 p-4 shadow-xl shadow-black/[0.04] ring-1 ring-inset ring-foreground/[0.05] backdrop-blur-2xl transition-all duration-200 hover:-translate-y-1 hover:border-foreground/30 hover:bg-background/80 hover:shadow-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {/* Course Thumbnail */}
+                  <div className="overflow-hidden rounded-2xl border border-border/60 bg-background/40 p-1.5">
+                    <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-muted/40">
+                      <img
+                        src={QURAN_COURSE.thumbnail}
+                        alt={QURAN_COURSE.title}
+                        referrerPolicy="no-referrer"
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Course Details: Title, Instructor Portrait, Student Stats & 5-Star Rating */}
+                  <div className="mt-3.5 flex flex-1 flex-col justify-between rounded-2xl border border-border/60 bg-background/70 p-5 font-['Hind_Siliguri','Plus_Jakarta_Sans',sans-serif]">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {QURAN_COURSE.organization.name} · {QURAN_COURSE.lessons.length}টি ক্লাস
+                      </p>
+
+                      <h3 className="mt-1.5 text-xl font-bold leading-snug tracking-tight text-foreground">
+                        {QURAN_COURSE.title}
+                      </h3>
+                      <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+                        {QURAN_COURSE.englishTitle}
+                      </p>
+
+                      {/* Course Instructor Profile */}
+                      <div className="mt-4 flex items-center gap-3 border-t border-border/60 pt-4">
+                        <img
+                          src={QURAN_COURSE.instructor.avatar}
+                          alt={QURAN_COURSE.instructor.name}
+                          referrerPolicy="no-referrer"
+                          className="h-11 w-11 shrink-0 rounded-full border border-border object-cover object-top"
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-foreground">
+                            {QURAN_COURSE.instructor.name}
+                          </p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            সাবেক শিক্ষক, মসজিদে নববী · মদীনা
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Students Enrolled/Completed + 5-Star Rating Footer */}
+                    <div className="mt-4 space-y-2.5 border-t border-border/60 pt-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                          <div className="flex items-center gap-0.5 text-amber-500">
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                          </div>
+                          <span className="font-mono tabular-nums">{QURAN_COURSE.rating}</span>
+                        </div>
+
+                        <span className="inline-flex items-center gap-1 text-muted-foreground">
+                          <Users className="h-3.5 w-3.5" />
+                          {QURAN_COURSE.enrolledCount}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                        <span className="text-[11px] font-normal text-muted-foreground">
+                          {QURAN_COURSE.completedCount}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          কোর্স খুলুন
+                          <ArrowUpRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              </div>
             </section>
           )}
         </div>

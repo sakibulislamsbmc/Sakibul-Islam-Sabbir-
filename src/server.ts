@@ -44,9 +44,70 @@ function isH3SwallowedErrorBody(body: string): boolean {
   }
 }
 
+const PRESENCE_TTL_MS = 45_000;
+const activeCourseVisitors = new Map<string, number>();
+
+function pruneInactiveVisitors(now: number) {
+  for (const [sessionId, lastSeen] of activeCourseVisitors.entries()) {
+    if (now - lastSeen > PRESENCE_TTL_MS) {
+      activeCourseVisitors.delete(sessionId);
+    }
+  }
+}
+
+async function handleCoursePresenceRequest(request: Request): Promise<Response> {
+  const now = Date.now();
+  pruneInactiveVisitors(now);
+
+  if (request.method === "POST") {
+    try {
+      const body = (await request.json().catch(() => ({}))) as { sessionId?: unknown };
+      if (typeof body.sessionId === "string" && body.sessionId.trim().length >= 6) {
+        activeCourseVisitors.set(body.sessionId.trim().slice(0, 64), now);
+      }
+    } catch {
+      // Ignore malformed body
+    }
+  } else if (request.method === "DELETE") {
+    try {
+      const url = new URL(request.url);
+      const qSessionId = url.searchParams.get("sessionId");
+      if (qSessionId) {
+        activeCourseVisitors.delete(qSessionId.trim().slice(0, 64));
+      } else {
+        const body = (await request.json().catch(() => ({}))) as { sessionId?: unknown };
+        if (typeof body.sessionId === "string") {
+          activeCourseVisitors.delete(body.sessionId.trim().slice(0, 64));
+        }
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
+  }
+
+  return new Response(
+    JSON.stringify({
+      activeVisitors: activeCourseVisitors.size,
+      updatedAt: now,
+    }),
+    {
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+      },
+    },
+  );
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
+      const url = new URL(request.url);
+      if (url.pathname === "/api/course-presence") {
+        return await handleCoursePresenceRequest(request);
+      }
+
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
       return await normalizeCatastrophicSsrResponse(response);
