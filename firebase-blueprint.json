@@ -175,13 +175,33 @@
         },
         "billingStatus": {
           "type": "string",
-          "description": "Current payment status of the order.",
-          "enum": ["Paid", "Pending Verification", "Installment (50% Paid)"]
+          "description": "Current payment status of the order (only admin can mark Paid/Rejected).",
+          "enum": ["Pending Verification", "Paid", "Installment (50% Paid)", "Rejected"]
         },
         "projectStatus": {
           "type": "string",
           "description": "Current lifecycle status of the project order.",
-          "enum": ["In Progress", "In Review", "Completed", "Cancelled"]
+          "enum": [
+            "Pending Verification",
+            "Approved",
+            "In Progress",
+            "In Review",
+            "Completed",
+            "Rejected",
+            "Cancelled"
+          ]
+        },
+        "verifiedByEmail": {
+          "type": "string",
+          "description": "Verified primary admin email that reviewed or approved the order.",
+          "minLength": 0,
+          "maxLength": 150
+        },
+        "adminNote": {
+          "type": "string",
+          "description": "Admin approval or feedback note.",
+          "minLength": 0,
+          "maxLength": 300
         },
         "orderDate": {
           "type": "string",
@@ -492,6 +512,152 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "ServiceApplication": {
+      "title": "ServiceApplication",
+      "description": "General, workshop, mentorship, certificate, or custom service applications awaiting admin verification.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the applicant.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "applicationCode": {
+          "type": "string",
+          "description": "Human-readable application reference code.",
+          "minLength": 3,
+          "maxLength": 40,
+          "pattern": "^[A-Z0-9\\-]+$"
+        },
+        "applicationCategory": {
+          "type": "string",
+          "description": "Type of application submitted.",
+          "enum": [
+            "AI Workshop 2027 Seat",
+            "1-on-1 Mentorship / Consultation",
+            "Custom Graphic / Video Quote",
+            "Certificate / Verification Request",
+            "Partnership / Collaboration",
+            "Other Request"
+          ]
+        },
+        "subject": {
+          "type": "string",
+          "description": "Short application headline or topic.",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "details": {
+          "type": "string",
+          "description": "Full application details or proposal.",
+          "minLength": 4,
+          "maxLength": 1500
+        },
+        "preferredMethod": {
+          "type": "string",
+          "description": "Payment or request channel.",
+          "enum": [
+            "bKash",
+            "Nagad",
+            "Dutch-Bangla Bank",
+            "Visa / Mastercard",
+            "PayPal",
+            "Wire Transfer",
+            "Free Request"
+          ]
+        },
+        "referenceCode": {
+          "type": "string",
+          "description": "Transaction ID, seat reference, or external link reference.",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "amountBdt": {
+          "type": "number",
+          "description": "Optional fee in Bangladeshi Taka (0 for free requests)."
+        },
+        "applicantName": {
+          "type": "string",
+          "description": "Full name of the applicant.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "applicantEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified account email of the applicant.",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "applicantPhone": {
+          "type": "string",
+          "description": "Contact phone or WhatsApp number.",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "status": {
+          "type": "string",
+          "description": "Admin approval state.",
+          "enum": ["Pending Verification", "Approved", "Rejected"]
+        },
+        "verifiedByEmail": {
+          "type": "string",
+          "description": "Primary admin email that approved or rejected this application.",
+          "minLength": 0,
+          "maxLength": 150
+        },
+        "adminNote": {
+          "type": "string",
+          "description": "Admin feedback or approval message.",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "submittedDate": {
+          "type": "string",
+          "description": "ISO date when application was submitted.",
+          "minLength": 8,
+          "maxLength": 32
+        },
+        "approvedDate": {
+          "type": "string",
+          "description": "ISO date when admin approved the application.",
+          "minLength": 0,
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when application was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when application was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "applicationCode",
+        "applicationCategory",
+        "subject",
+        "details",
+        "preferredMethod",
+        "referenceCode",
+        "amountBdt",
+        "applicantName",
+        "applicantEmail",
+        "applicantPhone",
+        "status",
+        "verifiedByEmail",
+        "adminNote",
+        "submittedDate",
+        "approvedDate",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -501,11 +667,15 @@
     },
     "/orders/{orderId}": {
       "schema": { "$ref": "#/entities/ProjectOrder" },
-      "description": "Client project orders containing billing method, order date, completed date, BDT amount, and downloadable receipt metadata."
+      "description": "Client project orders submitted for admin approval, tracking billing method, order date, completed date, BDT amount, and downloadable receipt metadata."
     },
     "/coursePurchases/{purchaseId}": {
       "schema": { "$ref": "#/entities/CoursePurchase" },
       "description": "Course enrollment, payment verification status, and per-user lesson progress records."
+    },
+    "/applications/{applicationId}": {
+      "schema": { "$ref": "#/entities/ServiceApplication" },
+      "description": "Workshop, mentorship, certificate, and custom applications submitted by users for manual admin approval."
     },
     "/notices/{noticeId}": {
       "schema": { "$ref": "#/entities/WebsiteNotice" },
@@ -513,3 +683,4 @@
     }
   }
 }
+

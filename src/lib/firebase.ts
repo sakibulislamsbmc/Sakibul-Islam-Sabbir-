@@ -1,5 +1,13 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  sendEmailVerification,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  type User,
+} from "firebase/auth";
 import { doc, getDocFromServer, getFirestore } from "firebase/firestore";
 import firebaseConfig from "../../firebase-applet-config.json";
 
@@ -79,6 +87,23 @@ export async function signInWithGoogle() {
   return signInWithPopup(auth, googleProvider);
 }
 
+export async function signInWithAdminEmailPassword(email: string, password: string) {
+  return signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+}
+
+export async function signInAdminWithGoogle() {
+  const adminProvider = new GoogleAuthProvider();
+  adminProvider.setCustomParameters({
+    login_hint: PRIMARY_ADMIN_EMAIL,
+    prompt: "select_account",
+  });
+  return signInWithPopup(auth, adminProvider);
+}
+
+export async function sendAdminVerificationEmail(user: User) {
+  return sendEmailVerification(user);
+}
+
 export async function logOutUser() {
   return signOut(auth);
 }
@@ -107,11 +132,40 @@ export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
 export const PACKAGE_TIERS = ["Starter", "Professional", "Enterprise", "Custom"] as const;
 export type PackageTier = (typeof PACKAGE_TIERS)[number];
 
-export const BILLING_STATUSES = ["Paid", "Pending Verification", "Installment (50% Paid)"] as const;
+export const BILLING_STATUSES = [
+  "Pending Verification",
+  "Paid",
+  "Installment (50% Paid)",
+  "Rejected",
+] as const;
 export type BillingStatus = (typeof BILLING_STATUSES)[number];
 
-export const PROJECT_STATUSES = ["In Progress", "In Review", "Completed", "Cancelled"] as const;
+export const PROJECT_STATUSES = [
+  "Pending Verification",
+  "Approved",
+  "In Progress",
+  "In Review",
+  "Completed",
+  "Rejected",
+  "Cancelled",
+] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
+export const APPLICATION_CATEGORIES = [
+  "AI Workshop 2027 Seat",
+  "1-on-1 Mentorship / Consultation",
+  "Custom Graphic / Video Quote",
+  "Certificate / Verification Request",
+  "Partnership / Collaboration",
+  "Other Request",
+] as const;
+export type ApplicationCategory = (typeof APPLICATION_CATEGORIES)[number];
+
+export const APPLICATION_METHODS = [...BILLING_METHODS, "Free Request"] as const;
+export type ApplicationMethod = (typeof APPLICATION_METHODS)[number];
+
+export const APPLICATION_STATUSES = ["Pending Verification", "Approved", "Rejected"] as const;
+export type ApplicationStatus = (typeof APPLICATION_STATUSES)[number];
 
 export const PRIMARY_ADMIN_EMAIL = "sakibulislamsbmc@gmail.com" as const;
 
@@ -196,6 +250,9 @@ export const VALIDATION_LIMITS = {
   NOTICE_BODY_MAX: 1500,
   NOTICE_ACTION_LABEL_MAX: 60,
   NOTICE_ACTION_ROUTE_MAX: 120,
+  APPLICATION_SUBJECT_MAX: 140,
+  APPLICATION_DETAILS_MAX: 1500,
+  APPLICATION_REFERENCE_MAX: 100,
 } as const;
 
 export interface UserProfileRecord {
@@ -227,12 +284,36 @@ export interface ProjectOrderRecord {
   billingReference: string;
   billingStatus: BillingStatus;
   projectStatus: ProjectStatus;
+  verifiedByEmail?: string;
+  adminNote?: string;
   orderDate: string;
   completedDate?: string;
   deliveryEstimate: string;
   projectNotes: string;
   clientName: string;
   clientEmail: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface ServiceApplicationRecord {
+  id: string;
+  uid: string;
+  applicationCode: string;
+  applicationCategory: ApplicationCategory;
+  subject: string;
+  details: string;
+  preferredMethod: ApplicationMethod;
+  referenceCode: string;
+  amountBdt: number;
+  applicantName: string;
+  applicantEmail: string;
+  applicantPhone: string;
+  status: ApplicationStatus;
+  verifiedByEmail: string;
+  adminNote: string;
+  submittedDate: string;
+  approvedDate: string;
   createdAt?: unknown;
   updatedAt?: unknown;
 }

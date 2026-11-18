@@ -24,6 +24,7 @@ import {
   Calendar,
   Check,
   CheckCircle2,
+  ClipboardCheck,
   Clock,
   CreditCard,
   Download,
@@ -32,6 +33,8 @@ import {
   FileSpreadsheet,
   FileText,
   Globe2,
+  KeyRound,
+  Layers,
   Loader2,
   Lock,
   LogOut,
@@ -58,11 +61,19 @@ import {
 import { MobileBottomNav, MobileHeaderMenu } from "@/components/MobileNavigation";
 import { PWAInstallButton } from "@/components/PWAInstallButton";
 import { QURAN_COURSE } from "@/data/courses-data";
-import { adminUpdateCourseVerification, syncVerifiedCourseProgress } from "@/lib/course-purchases";
+import { GRAPHIC_DESIGN_COURSE } from "@/data/graphic-design-course-data";
 import {
+  adminUpdateCourseVerification,
+  submitPaidCourseEnrollment,
+  syncVerifiedCourseProgress,
+} from "@/lib/course-purchases";
+import {
+  APPLICATION_CATEGORIES,
+  APPLICATION_METHODS,
+  type ApplicationCategory,
+  type ApplicationMethod,
   auth,
   BILLING_METHODS,
-  BILLING_STATUSES,
   type BillingMethod,
   type BillingStatus,
   type CoursePurchaseRecord,
@@ -76,11 +87,16 @@ import {
   OperationType,
   PACKAGE_TIERS,
   type PackageTier,
+  PRIMARY_ADMIN_EMAIL,
   PROJECT_STATUSES,
   type ProjectOrderRecord,
   type ProjectStatus,
+  sendAdminVerificationEmail,
   SERVICE_CATEGORIES,
+  type ServiceApplicationRecord,
   type ServiceCategory,
+  signInAdminWithGoogle,
+  signInWithAdminEmailPassword,
   signInWithGoogle,
   truncateString,
   type UserProfileRecord,
@@ -334,6 +350,12 @@ function buildOrderInvoiceHtml(
 </html>`;
 }
 
+function generateApplicationCode(): string {
+  const year = new Date().getFullYear();
+  const rand = Math.floor(1000 + Math.random() * 9000);
+  return `APP-${year}-${rand}`;
+}
+
 function AccountPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
@@ -343,6 +365,17 @@ function AccountPage() {
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  // Admin Portal Login & Gate State
+  const [adminGateVerified, setAdminGateVerified] = useState(false);
+  const [adminLoginEmail, setAdminLoginEmail] = useState<string>(PRIMARY_ADMIN_EMAIL);
+  const [adminLoginPassword, setAdminLoginPassword] = useState("");
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [adminAuthLoading, setAdminAuthLoading] = useState(false);
+  const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
+  const [adminNeedsGoogleLink, setAdminNeedsGoogleLink] = useState(false);
+  const [adminNeedsEmailVerify, setAdminNeedsEmailVerify] = useState(false);
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
 
   // User Profile state
   const [profile, setProfile] = useState<UserProfileRecord | null>(null);
@@ -356,20 +389,50 @@ function AccountPage() {
   const [billingDetails, setBillingDetails] = useState("");
   const [bio, setBio] = useState("");
 
-  // Orders & Course Purchases state
+  // Orders, Course Purchases & Service Applications state
   const [orders, setOrders] = useState<ProjectOrderRecord[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [coursePurchases, setCoursePurchases] = useState<CoursePurchaseRecord[]>([]);
   const [purchasesLoading, setPurchasesLoading] = useState(false);
+  const [applications, setApplications] = useState<ServiceApplicationRecord[]>([]);
+  const [applicationsLoading, setApplicationsLoading] = useState(false);
+
+  // Admin Queues state
   const [adminQueuePurchases, setAdminQueuePurchases] = useState<CoursePurchaseRecord[]>([]);
+  const [adminQueueOrders, setAdminQueueOrders] = useState<ProjectOrderRecord[]>([]);
+  const [adminQueueApplications, setAdminQueueApplications] = useState<ServiceApplicationRecord[]>(
+    [],
+  );
+  const [adminQueueTab, setAdminQueueTab] = useState<"orders" | "courses" | "applications">(
+    "orders",
+  );
   const [adminNoteDrafts, setAdminNoteDrafts] = useState<Record<string, string>>({});
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+
   const [dashboardSection, setDashboardSection] = useState<
-    "purchases" | "notices" | "orders" | "admin"
+    "purchases" | "orders" | "applications" | "notices" | "admin"
   >("purchases");
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("All");
+
+  // Quick Paid Course Application Modal inside Account
+  const [showCourseApplyModal, setShowCourseApplyModal] = useState(false);
+  const [coursePayMethod, setCoursePayMethod] = useState<BillingMethod>("bKash");
+  const [coursePayRef, setCoursePayRef] = useState("");
+  const [courseStudentPhone, setCourseStudentPhone] = useState("");
+  const [courseApplySubmitting, setCourseApplySubmitting] = useState(false);
+
+  // Other / Workshop / Service Application Modal inside Account
+  const [showNewAppModal, setShowNewAppModal] = useState(false);
+  const [appCategory, setAppCategory] = useState<ApplicationCategory>("AI Workshop 2027 Seat");
+  const [appSubject, setAppSubject] = useState("");
+  const [appDetails, setAppDetails] = useState("");
+  const [appMethod, setAppMethod] = useState<ApplicationMethod>("Free Request");
+  const [appRef, setAppRef] = useState("");
+  const [appAmountBdt, setAppAmountBdt] = useState("0");
+  const [appPhone, setAppPhone] = useState("");
+  const [appSubmitting, setAppSubmitting] = useState(false);
 
   // Website Notices state
   const [notices, setNotices] = useState<WebsiteNoticeRecord[]>([]);
@@ -382,22 +445,30 @@ function AccountPage() {
   const [noticeActionRoute, setNoticeActionRoute] = useState("/courses");
   const [noticeIsPublished, setNoticeIsPublished] = useState(true);
 
-  // New Order Form state (Bangladeshi Taka - BDT)
+  // New Order Form state (Bangladeshi Taka - BDT; locked to Pending Verification until Admin approves)
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [newServiceCategory, setNewServiceCategory] = useState<ServiceCategory>("Web Development");
   const [newPackageTier, setNewPackageTier] = useState<PackageTier>("Professional");
   const [newAmountBdt, setNewAmountBdt] = useState("15000");
   const [newBillingMethod, setNewBillingMethod] = useState<BillingMethod>("bKash");
   const [newBillingReference, setNewBillingReference] = useState("");
-  const [newBillingStatus, setNewBillingStatus] = useState<BillingStatus>("Paid");
   const [newOrderDate, setNewOrderDate] = useState("");
   const [newDeliveryEstimate, setNewDeliveryEstimate] = useState("14 Days");
   const [newProjectNotes, setNewProjectNotes] = useState("");
 
   const isPrimaryAdmin = isPrimaryAdminUser(user);
+  const isAdminUnlocked = isPrimaryAdmin && adminGateVerified;
 
   useEffect(() => {
     setNewOrderDate((prev) => prev || todayIsoDate());
+    fetch("/api/admin/session", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { authenticated: false }))
+      .then((data: { authenticated?: boolean }) => {
+        if (data?.authenticated) setAdminGateVerified(true);
+      })
+      .catch(() => {
+        // Ignore network errors on initial check
+      });
   }, []);
 
   useEffect(() => {
@@ -415,7 +486,17 @@ function AccountPage() {
       if (!currentUser) {
         setProfile(null);
         setOrders([]);
+        setApplications([]);
+        setAdminQueueOrders([]);
+        setAdminQueuePurchases([]);
+        setAdminQueueApplications([]);
         return;
+      }
+
+      if (currentUser.email?.toLowerCase() === PRIMARY_ADMIN_EMAIL && !currentUser.emailVerified) {
+        setAdminNeedsEmailVerify(true);
+      } else {
+        setAdminNeedsEmailVerify(false);
       }
 
       // Ensure UserProfile exists in Firestore
@@ -435,6 +516,8 @@ function AccountPage() {
           setBillingDetails(data.billingDetails || "");
           setBio(data.bio || "");
           setNewBillingMethod(data.preferredBillingMethod || "bKash");
+          setAppPhone(data.phone || "");
+          setCourseStudentPhone(data.phone || "");
           if (data.billingDetails) {
             setNewBillingReference(data.billingDetails.slice(0, 80));
           }
@@ -476,6 +559,8 @@ function AccountPage() {
           setBio(initialProfile.bio);
           setNewBillingMethod(initialProfile.preferredBillingMethod);
           setNewBillingReference(initialProfile.billingDetails);
+          setAppPhone(initialProfile.phone);
+          setCourseStudentPhone(initialProfile.phone);
         }
       } catch (error) {
         handleFirestoreError(error, OperationType.GET, userDocPath);
@@ -485,9 +570,14 @@ function AccountPage() {
     return () => unsubscribe();
   }, []);
 
-  // Subscribe to authenticated user's orders
+  // Subscribe to authenticated user's orders (+ all orders for verified primary admin)
   useEffect(() => {
     if (!authReady || !user) return;
+    if (!user.emailVerified) {
+      setOrders([]);
+      setAdminQueueOrders([]);
+      return;
+    }
 
     setOrdersLoading(true);
     const ordersPath = "orders";
@@ -500,7 +590,6 @@ function AccountPage() {
           id: docSnap.id,
           ...(docSnap.data() as Omit<ProjectOrderRecord, "id">),
         }));
-        // Sort newest orderDate first
         list.sort((a, b) => b.orderDate.localeCompare(a.orderDate));
         setOrders(list);
         setOrdersLoading(false);
@@ -511,12 +600,50 @@ function AccountPage() {
       },
     );
 
-    return () => unsubscribe();
+    let unsubAdminOrders: (() => void) | undefined;
+    if (isPrimaryAdminUser(user)) {
+      const adminOrdersQuery = query(collection(db, "orders"));
+      unsubAdminOrders = onSnapshot(
+        adminOrdersQuery,
+        (snapshot) => {
+          const allOrders: ProjectOrderRecord[] = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<ProjectOrderRecord, "id">),
+          }));
+          allOrders.sort((a, b) => {
+            if (
+              a.projectStatus === "Pending Verification" &&
+              b.projectStatus !== "Pending Verification"
+            ) {
+              return -1;
+            }
+            if (
+              b.projectStatus === "Pending Verification" &&
+              a.projectStatus !== "Pending Verification"
+            ) {
+              return 1;
+            }
+            return b.orderDate.localeCompare(a.orderDate);
+          });
+          setAdminQueueOrders(allOrders);
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.LIST, ordersPath);
+        },
+      );
+    } else {
+      setAdminQueueOrders([]);
+    }
+
+    return () => {
+      unsubscribe();
+      if (unsubAdminOrders) unsubAdminOrders();
+    };
   }, [authReady, user]);
 
   // Subscribe to authenticated user's coursePurchases (+ all queue for verified admin)
   useEffect(() => {
-    if (!authReady || !user) {
+    if (!authReady || !user || !user.emailVerified) {
       setCoursePurchases([]);
       setAdminQueuePurchases([]);
       return;
@@ -629,9 +756,73 @@ function AccountPage() {
     };
   }, [authReady, user]);
 
+  // Subscribe to authenticated user's Service Applications (+ all applications for primary admin)
+  useEffect(() => {
+    if (!authReady || !user || !user.emailVerified) {
+      setApplications([]);
+      setAdminQueueApplications([]);
+      return;
+    }
+
+    setApplicationsLoading(true);
+    const appsPath = "applications";
+    const userAppsQuery = query(collection(db, "applications"), where("uid", "==", user.uid));
+
+    const unsubUserApps = onSnapshot(
+      userAppsQuery,
+      (snapshot) => {
+        const list: ServiceApplicationRecord[] = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<ServiceApplicationRecord, "id">),
+        }));
+        list.sort((a, b) => b.submittedDate.localeCompare(a.submittedDate));
+        setApplications(list);
+        setApplicationsLoading(false);
+      },
+      (error) => {
+        setApplicationsLoading(false);
+        handleFirestoreError(error, OperationType.LIST, appsPath);
+      },
+    );
+
+    let unsubAdminApps: (() => void) | undefined;
+    if (isPrimaryAdminUser(user)) {
+      const adminAppsQuery = query(collection(db, "applications"));
+      unsubAdminApps = onSnapshot(
+        adminAppsQuery,
+        (snapshot) => {
+          const allList: ServiceApplicationRecord[] = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<ServiceApplicationRecord, "id">),
+          }));
+          allList.sort((a, b) => {
+            if (a.status === "Pending Verification" && b.status !== "Pending Verification") {
+              return -1;
+            }
+            if (b.status === "Pending Verification" && a.status !== "Pending Verification") {
+              return 1;
+            }
+            return b.submittedDate.localeCompare(a.submittedDate);
+          });
+          setAdminQueueApplications(allList);
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.LIST, appsPath);
+        },
+      );
+    } else {
+      setAdminQueueApplications([]);
+    }
+
+    return () => {
+      unsubUserApps();
+      if (unsubAdminApps) unsubAdminApps();
+    };
+  }, [authReady, user]);
+
   // Subscribe to published Website Notices (or all notices for verified primary admin ONLY)
   useEffect(() => {
-    if (!authReady || !user) {
+    if (!authReady || !user || !user.emailVerified) {
       setNotices([]);
       return;
     }
@@ -684,7 +875,117 @@ function AccountPage() {
     }
   };
 
+  const handleAdminPortalLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminAuthLoading(true);
+    setAdminAuthError(null);
+    setAdminNeedsGoogleLink(false);
+
+    try {
+      const res = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          email: adminLoginEmail.trim(),
+          password: adminLoginPassword,
+        }),
+      });
+      const data = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) {
+        setAdminAuthError(
+          data.error || "ইমেইল অথবা পাসওয়ার্ড সঠিক নয়। শুধুমাত্র প্রাইমারি এডমিন লগইন করতে পারবেন।",
+        );
+        return;
+      }
+
+      setAdminGateVerified(true);
+
+      // Already signed in via Google as verified Primary Admin -> unlock immediately
+      if (isPrimaryAdminUser(user)) {
+        setAdminLoginPassword("");
+        setShowAdminLoginModal(false);
+        setDashboardSection("admin");
+        setBannerMessage({
+          type: "success",
+          text: "Admin Portal আনলক হয়েছে! এখন আপনি সব অর্ডার, কোর্স ও আবেদন ম্যানুয়ালি Approve করতে পারবেন।",
+        });
+        return;
+      }
+
+      // Sign into Firebase Auth using Email & Password if enabled
+      try {
+        const cred = await signInWithAdminEmailPassword(adminLoginEmail, adminLoginPassword);
+        setAdminLoginPassword("");
+        if (!cred.user.emailVerified) {
+          setAdminNeedsEmailVerify(true);
+          setAdminAuthError(
+            "পাসওয়ার্ড যাচাই হয়েছে, তবে Firebase সিকিউরিটির জন্য আপনার ইমেইল ভেরিফায়েড হতে হবে। নিচের Google Verify বাটনে ক্লিক করে ১ ক্লিকে এডমিন ড্যাশবোর্ডে প্রবেশ করুন।",
+          );
+          return;
+        }
+        setShowAdminLoginModal(false);
+        setDashboardSection("admin");
+        setBannerMessage({
+          type: "success",
+          text: "Primary Admin লগইন সম্পন্ন হয়েছে! Admin Verification Portal সক্রিয়।",
+        });
+      } catch {
+        // Server password already verified; prompt 1-click Google linkage for Primary Admin Firebase token
+        setAdminLoginPassword("");
+        setAdminNeedsGoogleLink(true);
+      }
+    } catch {
+      setAdminAuthError("সার্ভারের সাথে সংযোগ করতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।");
+    } finally {
+      setAdminAuthLoading(false);
+    }
+  };
+
+  const handleCompleteAdminGoogleVerify = async () => {
+    setAdminAuthLoading(true);
+    setAdminAuthError(null);
+    try {
+      const cred = await signInAdminWithGoogle();
+      if (cred.user.email?.toLowerCase() !== PRIMARY_ADMIN_EMAIL || !cred.user.emailVerified) {
+        await logOutUser();
+        setAdminAuthError(
+          `দয়া করে শুধুমাত্র প্রাইমারি এডমিন ইমেইল (${PRIMARY_ADMIN_EMAIL}) নির্বাচন করে লগইন করুন।`,
+        );
+        return;
+      }
+      setAdminNeedsGoogleLink(false);
+      setAdminNeedsEmailVerify(false);
+      setShowAdminLoginModal(false);
+      setDashboardSection("admin");
+      setBannerMessage({
+        type: "success",
+        text: "Primary Admin লগইন সফলভাবে সম্পন্ন হয়েছে! এখন সব পেন্ডিং আবেদন অ্যাপ্রুভ করতে পারবেন।",
+      });
+    } catch (error) {
+      setAdminAuthError(
+        error instanceof Error ? error.message : "Google verification সম্পন্ন করা যায়নি।",
+      );
+    } finally {
+      setAdminAuthLoading(false);
+    }
+  };
+
+  const handleLockAdminPortal = async () => {
+    await fetch("/api/admin/logout", { method: "POST", credentials: "include" }).catch(() => {});
+    setAdminGateVerified(false);
+    if (dashboardSection === "admin") setDashboardSection("purchases");
+    setBannerMessage({
+      type: "success",
+      text: "Admin Portal লক করা হয়েছে।",
+    });
+  };
+
   const handleSignOut = async () => {
+    await fetch("/api/admin/logout", { method: "POST", credentials: "include" }).catch(() => {});
+    setAdminGateVerified(false);
+    setAdminNeedsGoogleLink(false);
+    setAdminNeedsEmailVerify(false);
     await logOutUser();
     setBannerMessage({
       type: "success",
@@ -788,11 +1089,13 @@ function AccountPage() {
       amountBdt: parsedAmountBdt,
       billingMethod: newBillingMethod,
       billingReference: truncateString(
-        newBillingReference || billingDetails || `${newBillingMethod} Verified Account`,
+        newBillingReference || billingDetails || `${newBillingMethod} Reference Submitted`,
         VALIDATION_LIMITS.BILLING_REFERENCE_MAX,
       ),
-      billingStatus: newBillingStatus,
-      projectStatus: "In Progress" as ProjectStatus,
+      billingStatus: "Pending Verification" as BillingStatus,
+      projectStatus: "Pending Verification" as ProjectStatus,
+      verifiedByEmail: "",
+      adminNote: "",
       orderDate: truncateString(newOrderDate || todayIsoDate(), VALIDATION_LIMITS.ORDER_DATE_MAX),
       completedDate: "",
       deliveryEstimate: truncateString(
@@ -814,9 +1117,10 @@ function AccountPage() {
       setNewProjectTitle("");
       setNewProjectNotes("");
       setShowNewOrderModal(false);
+      setDashboardSection("orders");
       setBannerMessage({
         type: "success",
-        text: `Order ${payload.orderNumber} (৳${parsedAmountBdt.toLocaleString("en-US")} BDT) placed! You can view billing details or download your BDT invoice below.`,
+        text: `প্রজেক্ট আবেদন ${payload.orderNumber} (৳${parsedAmountBdt.toLocaleString("en-US")} BDT) সফলভাবে জমা হয়েছে! বর্তমানে এটি "Pending Verification" অবস্থায় আছে — অ্যাডমিন ম্যানুয়ালি Approve করলে আপনার ড্যাশবোর্ডে Approved দেখাবে।`,
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -846,8 +1150,10 @@ function AccountPage() {
         billingDetails || "DBBL Agent Banking •••• 9506",
         VALIDATION_LIMITS.BILLING_REFERENCE_MAX,
       ),
-      billingStatus: "Paid" as BillingStatus,
-      projectStatus: "In Progress" as ProjectStatus,
+      billingStatus: "Pending Verification" as BillingStatus,
+      projectStatus: "Pending Verification" as ProjectStatus,
+      verifiedByEmail: "",
+      adminNote: "",
       orderDate: todayIsoDate(),
       completedDate: "",
       deliveryEstimate: "14 Business Days",
@@ -866,7 +1172,7 @@ function AccountPage() {
       await setDoc(doc(db, "orders", orderId), payload);
       setBannerMessage({
         type: "success",
-        text: `Sample project order (${payload.orderNumber} • ৳${sampleBdt.toLocaleString("en-US")} BDT) added to your account.`,
+        text: `Sample project application (${payload.orderNumber} • ৳${sampleBdt.toLocaleString("en-US")} BDT) submitted as Pending Verification for Admin approval.`,
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -875,17 +1181,124 @@ function AccountPage() {
     }
   };
 
+  const handleCreateCourseApplication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (coursePayRef.trim().length < 3) {
+      setBannerMessage({
+        type: "error",
+        text: "দয়া করে আপনার সঠিক পেমেন্ট রেফারেন্স বা TrxID লিখুন।",
+      });
+      return;
+    }
+    setCourseApplySubmitting(true);
+    setBannerMessage(null);
+    try {
+      await submitPaidCourseEnrollment({
+        user,
+        courseId: GRAPHIC_DESIGN_COURSE.id,
+        courseTitle: GRAPHIC_DESIGN_COURSE.title,
+        courseRoute: "/graphic-design-course",
+        amountBdt: GRAPHIC_DESIGN_COURSE.priceBdt,
+        totalLessonsCount: GRAPHIC_DESIGN_COURSE.lessons.length,
+        paymentMethod: coursePayMethod,
+        paymentReference: coursePayRef.trim(),
+        studentPhone: courseStudentPhone.trim() || phone.trim(),
+        studentName: displayName || user.displayName || undefined,
+      });
+      setCoursePayRef("");
+      setShowCourseApplyModal(false);
+      setDashboardSection("purchases");
+      setBannerMessage({
+        type: "success",
+        text: "কোর্স এনরোলমেন্ট আবেদন জমা হয়েছে! বর্তমানে এটি Pending Verification অবস্থায় আছে। অ্যাডমিন Approve করলে ক্লাস আনলক হবে।",
+      });
+    } catch (error) {
+      setBannerMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Could not submit course application.",
+      });
+    } finally {
+      setCourseApplySubmitting(false);
+    }
+  };
+
+  const handleCreateServiceApplication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    const safeSubject = truncateString(appSubject, VALIDATION_LIMITS.APPLICATION_SUBJECT_MAX);
+    const safeDetails = truncateString(appDetails, VALIDATION_LIMITS.APPLICATION_DETAILS_MAX);
+    if (safeSubject.length < 2 || safeDetails.length < 4) {
+      setBannerMessage({
+        type: "error",
+        text: "দয়া করে আবেদনের বিষয় এবং বিস্তারিত তথ্য সঠিকভাবে লিখুন।",
+      });
+      return;
+    }
+
+    setAppSubmitting(true);
+    setBannerMessage(null);
+    const appId = `app_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const path = `applications/${appId}`;
+    const parsedBdt = Math.min(500000, Math.max(0, Math.round(Number(appAmountBdt) || 0)));
+
+    const payload = {
+      uid: truncateString(user.uid, 128),
+      applicationCode: generateApplicationCode(),
+      applicationCategory: appCategory,
+      subject: safeSubject,
+      details: safeDetails,
+      preferredMethod: appMethod,
+      referenceCode: truncateString(appRef, VALIDATION_LIMITS.APPLICATION_REFERENCE_MAX),
+      amountBdt: parsedBdt,
+      applicantName: truncateString(
+        displayName || user.displayName || "Applicant",
+        VALIDATION_LIMITS.DISPLAY_NAME_MAX,
+      ),
+      applicantEmail: truncateString(
+        user.email || "client@example.com",
+        VALIDATION_LIMITS.EMAIL_MAX,
+      ),
+      applicantPhone: truncateString(appPhone || phone, VALIDATION_LIMITS.PHONE_MAX),
+      status: "Pending Verification" as const,
+      verifiedByEmail: "",
+      adminNote: "",
+      submittedDate: todayIsoDate(),
+      approvedDate: "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await setDoc(doc(db, "applications", appId), payload);
+      setAppSubject("");
+      setAppDetails("");
+      setAppRef("");
+      setAppAmountBdt("0");
+      setShowNewAppModal(false);
+      setDashboardSection("applications");
+      setBannerMessage({
+        type: "success",
+        text: `আবেদন ${payload.applicationCode} জমা হয়েছে! বর্তমানে Pending Verification অবস্থায় আছে — অ্যাডমিন ম্যানুয়ালি Approve করলে ড্যাশবোর্ডে Approved দেখাবে।`,
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+    } finally {
+      setAppSubmitting(false);
+    }
+  };
+
   const handleAdminVerifyCourse = async (
     purchase: CoursePurchaseRecord,
     nextStatus: "Verified" | "Rejected",
   ) => {
-    if (!user?.email || !isPrimaryAdminUser(user)) return;
+    if (!user?.email || !isAdminUnlocked) return;
     setVerifyingId(purchase.id);
     setBannerMessage(null);
     const note =
       adminNoteDrafts[purchase.id]?.trim() ||
       (nextStatus === "Verified"
-        ? "Payment verified. Full course access unlocked."
+        ? "Approved by Primary Admin. Full course access unlocked."
         : "Transaction ID could not be verified. Please re-submit valid TrxID.");
 
     try {
@@ -897,7 +1310,7 @@ function AccountPage() {
       });
       setBannerMessage({
         type: "success",
-        text: `${purchase.studentEmail} — status updated to "${nextStatus}".`,
+        text: `${purchase.studentEmail} — Course status updated to "${nextStatus === "Verified" ? "Approved" : "Rejected"}".`,
       });
     } catch (error) {
       setBannerMessage({
@@ -909,37 +1322,88 @@ function AccountPage() {
     }
   };
 
-  const handleUpdateOrderStatus = async (
+  const handleAdminVerifyOrder = async (
     order: ProjectOrderRecord,
-    nextStatus: ProjectStatus,
-    nextBillingStatus?: BillingStatus,
+    nextProjectStatus: "Approved" | "Completed" | "Rejected",
+    nextBillingStatus: BillingStatus,
   ) => {
-    if (!user) return;
-    if (order.projectStatus === "Completed" || order.projectStatus === "Cancelled") return;
+    if (!user?.email || !isAdminUnlocked) return;
+    setVerifyingId(order.id);
+    setBannerMessage(null);
     const path = `orders/${order.id}`;
-    const completedDateValue = nextStatus === "Completed" ? todayIsoDate() : "";
+    const note = truncateString(
+      adminNoteDrafts[order.id]?.trim() ||
+        (nextProjectStatus === "Approved"
+          ? "Project order verified & approved by Primary Admin."
+          : nextProjectStatus === "Completed"
+            ? "Project work completed & payment settled."
+            : "Payment reference could not be verified. Please update reference & resubmit."),
+      VALIDATION_LIMITS.ADMIN_NOTE_MAX,
+    );
+    const completedDateValue =
+      nextProjectStatus === "Completed" ? todayIsoDate() : order.completedDate || "";
+
     try {
       await updateDoc(doc(db, "orders", order.id), {
-        projectStatus: nextStatus,
-        billingStatus: nextBillingStatus || order.billingStatus,
+        projectStatus: nextProjectStatus,
+        billingStatus: nextBillingStatus,
         completedDate: completedDateValue,
+        verifiedByEmail: truncateString(user.email, VALIDATION_LIMITS.EMAIL_MAX),
+        adminNote: note,
         updatedAt: serverTimestamp(),
       });
       setBannerMessage({
         type: "success",
         text:
-          nextStatus === "Completed"
+          nextProjectStatus === "Completed"
             ? `Order ${order.orderNumber} marked Completed (${completedDateValue}) & Paid.`
-            : `Order ${order.orderNumber} updated to "${nextStatus}".`,
+            : `Order ${order.orderNumber} updated to "${nextProjectStatus}".`,
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
+  const handleAdminVerifyApplication = async (
+    application: ServiceApplicationRecord,
+    nextStatus: "Approved" | "Rejected",
+  ) => {
+    if (!user?.email || !isAdminUnlocked) return;
+    setVerifyingId(application.id);
+    setBannerMessage(null);
+    const path = `applications/${application.id}`;
+    const note = truncateString(
+      adminNoteDrafts[application.id]?.trim() ||
+        (nextStatus === "Approved"
+          ? "Application approved by Primary Admin."
+          : "Application declined. Please check details and re-submit."),
+      VALIDATION_LIMITS.ADMIN_NOTE_MAX,
+    );
+
+    try {
+      await updateDoc(doc(db, "applications", application.id), {
+        status: nextStatus,
+        verifiedByEmail: truncateString(user.email, VALIDATION_LIMITS.EMAIL_MAX),
+        adminNote: note,
+        approvedDate: nextStatus === "Approved" ? todayIsoDate() : "",
+        updatedAt: serverTimestamp(),
+      });
+      setBannerMessage({
+        type: "success",
+        text: `Application ${application.applicationCode} updated to "${nextStatus}".`,
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    } finally {
+      setVerifyingId(null);
     }
   };
 
   const handlePublishNotice = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.email || !isPrimaryAdminUser(user)) return;
+    if (!user?.email || !isAdminUnlocked) return;
     setNoticeSubmitting(true);
     setBannerMessage(null);
 
@@ -991,7 +1455,7 @@ function AccountPage() {
   };
 
   const handleToggleNoticePublish = async (notice: WebsiteNoticeRecord) => {
-    if (!user?.email || !isPrimaryAdminUser(user)) return;
+    if (!user?.email || !isAdminUnlocked) return;
     const path = `notices/${notice.id}`;
     try {
       await updateDoc(doc(db, "notices", notice.id), {
@@ -1009,7 +1473,7 @@ function AccountPage() {
   };
 
   const handleDeleteNotice = async (noticeId: string) => {
-    if (!user?.email || !isPrimaryAdminUser(user)) return;
+    if (!user?.email || !isAdminUnlocked) return;
     const path = `notices/${noticeId}`;
     try {
       await deleteDoc(doc(db, "notices", noticeId));
@@ -1073,12 +1537,20 @@ function AccountPage() {
   const totalSpentBdt = useMemo(
     () =>
       orders
-        .filter((o) => o.projectStatus !== "Cancelled")
+        .filter((o) => o.projectStatus !== "Cancelled" && o.projectStatus !== "Rejected")
         .reduce((sum, o) => sum + getOrderAmountBdt(o), 0),
     [orders],
   );
 
   const publishedNotices = useMemo(() => notices.filter((n) => n.isPublished), [notices]);
+
+  const totalAdminPendingCount = useMemo(
+    () =>
+      adminQueueOrders.filter((o) => o.projectStatus === "Pending Verification").length +
+      adminQueuePurchases.filter((p) => p.paymentStatus === "Pending Verification").length +
+      adminQueueApplications.filter((a) => a.status === "Pending Verification").length,
+    [adminQueueOrders, adminQueuePurchases, adminQueueApplications],
+  );
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background font-sans text-foreground antialiased selection:bg-primary selection:text-primary-foreground">
@@ -1194,19 +1666,64 @@ function AccountPage() {
           </div>
 
           {user && (
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
               <button
                 type="button"
                 onClick={() => setShowNewOrderModal(true)}
-                className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-6 text-xs font-semibold text-primary-foreground shadow-lg shadow-black/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground shadow-lg shadow-black/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
               >
-                <Plus className="h-4 w-4" />
-                Place Project Order
+                <Plus className="h-3.5 w-3.5" />
+                Apply for Project
               </button>
               <button
                 type="button"
+                onClick={() => setShowCourseApplyModal(true)}
+                className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border/80 bg-background/80 px-4 text-xs font-semibold text-foreground backdrop-blur-md transition-all hover:bg-muted"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                Apply for Course
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowNewAppModal(true)}
+                className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border/80 bg-background/80 px-4 text-xs font-semibold text-foreground backdrop-blur-md transition-all hover:bg-muted"
+              >
+                <ClipboardCheck className="h-3.5 w-3.5" />
+                Other Application
+              </button>
+              {isAdminUnlocked ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setDashboardSection("admin")}
+                    className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-4 text-xs font-semibold text-emerald-800 dark:text-emerald-200"
+                  >
+                    <Unlock className="h-3.5 w-3.5" />
+                    Admin Portal ({totalAdminPendingCount})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLockAdminPortal}
+                    className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-4 text-xs font-semibold text-foreground hover:bg-muted"
+                  >
+                    <Lock className="h-3.5 w-3.5" />
+                    Lock Admin
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowAdminLoginModal(true)}
+                  className="inline-flex h-10 cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-background/70 px-4 text-xs font-semibold text-foreground backdrop-blur-md transition-all hover:bg-muted"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  Admin Login
+                </button>
+              )}
+              <button
+                type="button"
                 onClick={handleSignOut}
-                className="inline-flex h-11 items-center gap-2 rounded-full border border-border/80 bg-background/70 px-5 text-xs font-semibold text-foreground backdrop-blur-md transition-all hover:bg-muted"
+                className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full border border-border/80 bg-background/70 px-4 text-xs font-semibold text-foreground backdrop-blur-md transition-all hover:bg-muted"
               >
                 <LogOut className="h-3.5 w-3.5" />
                 Sign Out
@@ -1316,42 +1833,112 @@ function AccountPage() {
               </div>
             </div>
 
-            {/* Preview Card on Right */}
-            <div className="flex flex-col justify-between rounded-3xl border border-border/80 bg-background/50 p-7 backdrop-blur-2xl sm:p-8 lg:col-span-5">
+            {/* Admin Dashboard Login Card */}
+            <div className="flex flex-col justify-between rounded-3xl border border-border/80 bg-background/60 p-7 shadow-[0_24px_60px_-15px_rgba(0,0,0,0.08)] backdrop-blur-2xl sm:p-8 lg:col-span-5">
               <div>
-                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                  Supported Billing Methods
-                </p>
-                <h3 className="mt-2 font-display text-xl font-bold tracking-tight">
-                  Flexible Local &amp; Global Billing
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-muted/60 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
+                  <KeyRound className="h-3 w-3" />
+                  Admin Dashboard Login
+                </span>
+                <h3 className="mt-3 font-display text-xl font-bold tracking-tight">
+                  এডমিন ড্যাশবোর্ড লগইন
                 </h3>
-                <p className="mt-2 text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
-                  All project orders record your chosen payment method, reference ID, order date,
-                  and package tier for transparent accounting.
+                <p className="mt-1.5 text-xs font-light leading-relaxed text-muted-foreground">
+                  সাধারণ ইউজার শুধু প্রজেক্ট, কোর্স ও সার্ভিসের জন্য আবেদন করতে পারবেন। প্রাইমারি
+                  এডমিন লগইন করে প্রতিটি আবেদন ম্যানুয়ালি Approve করলে তা Approved হবে।
                 </p>
 
-                <div className="mt-5 grid grid-cols-2 gap-2.5">
-                  {BILLING_METHODS.map((method) => (
-                    <div
-                      key={method}
-                      className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2.5 text-xs font-medium text-foreground"
-                    >
-                      <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                      {method}
+                <form onSubmit={handleAdminPortalLogin} className="mt-5 space-y-3.5">
+                  <div>
+                    <label className="mb-1 flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      <Mail className="h-3 w-3" /> Admin Email
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={adminLoginEmail}
+                      onChange={(e) => setAdminLoginEmail(e.target.value)}
+                      placeholder={PRIMARY_ADMIN_EMAIL}
+                      className="h-10 w-full rounded-xl border border-border bg-background/80 px-3.5 text-xs font-medium text-foreground outline-none focus:border-primary"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      <Lock className="h-3 w-3" /> Admin Password
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showAdminPassword ? "text" : "password"}
+                        required
+                        value={adminLoginPassword}
+                        onChange={(e) => setAdminLoginPassword(e.target.value)}
+                        placeholder="Enter admin password"
+                        className="h-10 w-full rounded-xl border border-border bg-background/80 pl-3.5 pr-10 text-xs font-medium text-foreground outline-none focus:border-primary"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminPassword((prev) => !prev)}
+                        aria-label={showAdminPassword ? "Hide password" : "Show password"}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
+                      >
+                        {showAdminPassword ? (
+                          <EyeOff className="h-3.5 w-3.5" />
+                        ) : (
+                          <Eye className="h-3.5 w-3.5" />
+                        )}
+                      </button>
                     </div>
-                  ))}
-                </div>
+                  </div>
+
+                  {adminAuthError && (
+                    <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-3.5 py-2.5 text-[11px] font-medium text-destructive">
+                      {adminAuthError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={adminAuthLoading}
+                    className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground shadow-sm transition-all hover:scale-[1.01] disabled:opacity-60"
+                  >
+                    {adminAuthLoading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                    )}
+                    Login to Admin Dashboard
+                  </button>
+
+                  {(adminNeedsGoogleLink || adminNeedsEmailVerify) && (
+                    <div className="space-y-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5">
+                      <p className="text-[11px] font-medium text-emerald-900 dark:text-emerald-200">
+                        পাসওয়ার্ড যাচাই সফল! এডমিন সেশন সম্পন্ন করতে প্রাইমারি এডমিন Google
+                        অ্যাকাউন্ট ({PRIMARY_ADMIN_EMAIL}) দিয়ে ১-ক্লিকে যাচাই করুন:
+                      </p>
+                      <button
+                        type="button"
+                        disabled={adminAuthLoading}
+                        onClick={handleCompleteAdminGoogleVerify}
+                        className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-emerald-700 px-4 text-[11px] font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        Complete Admin Google Sign-In
+                      </button>
+                    </div>
+                  )}
+                </form>
               </div>
 
               <div className="mt-6 rounded-2xl border border-border/60 bg-muted/40 p-4">
                 <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                  Firebase Project Connected
+                  Supported Billing Methods ({BILLING_METHODS.length})
                 </p>
-                <p className="mt-1 font-mono text-xs font-semibold text-foreground">
-                  sabbir-portfolio-b86e1
+                <p className="mt-1 text-[11px] font-medium text-foreground">
+                  {BILLING_METHODS.join(" · ")}
                 </p>
-                <p className="mt-0.5 text-[11px] font-light text-muted-foreground">
-                  Protected by Zero-Trust Firestore Security Rules with strict owner isolation.
+                <p className="mt-1 text-[11px] font-light text-muted-foreground">
+                  Every submission starts as Pending Verification until approved by Primary Admin.
                 </p>
               </div>
             </div>
@@ -1364,7 +1951,11 @@ function AccountPage() {
               <div className="rounded-3xl border border-border/80 bg-background/60 p-5 shadow-sm backdrop-blur-2xl">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    {isPrimaryAdmin ? "Primary Admin Account" : "Student & Client Account"}
+                    {isAdminUnlocked
+                      ? "Primary Admin • Unlocked"
+                      : isPrimaryAdmin
+                        ? "Primary Admin • Locked"
+                        : "Student & Client Account"}
                   </span>
                   <ShieldCheck className="h-4 w-4 text-foreground" />
                 </div>
@@ -1383,7 +1974,7 @@ function AccountPage() {
               >
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    Purchased Courses
+                    Course Applications
                   </span>
                   <BookOpen className="h-4 w-4 text-foreground" />
                 </div>
@@ -1391,32 +1982,9 @@ function AccountPage() {
                   {coursePurchases.length}
                 </p>
                 <p className="font-mono text-[11px] text-muted-foreground">
-                  {coursePurchases.filter((c) => c.paymentStatus === "Verified").length} Active •{" "}
+                  {coursePurchases.filter((c) => c.paymentStatus === "Verified").length} Approved •{" "}
                   {coursePurchases.filter((c) => c.paymentStatus === "Pending Verification").length}{" "}
                   Pending
-                </p>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDashboardSection("notices")}
-                className={`cursor-pointer rounded-3xl border p-5 text-left shadow-sm backdrop-blur-2xl transition-colors ${
-                  dashboardSection === "notices"
-                    ? "border-primary bg-background/85 ring-1 ring-primary/20"
-                    : "border-border/80 bg-background/60 hover:border-foreground/30"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    Website Notices
-                  </span>
-                  <Megaphone className="h-4 w-4 text-foreground" />
-                </div>
-                <p className="mt-2 font-display text-2xl font-bold tabular-nums">
-                  {publishedNotices.length}
-                </p>
-                <p className="truncate font-mono text-[11px] text-muted-foreground">
-                  {publishedNotices[0]?.title || "No active notices"}
                 </p>
               </button>
 
@@ -1431,21 +1999,59 @@ function AccountPage() {
               >
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    Total Project Orders
+                    Project Orders
                   </span>
                   <Briefcase className="h-4 w-4 text-foreground" />
                 </div>
                 <p className="mt-2 font-display text-2xl font-bold tabular-nums">{orders.length}</p>
                 <p className="font-mono text-[11px] text-muted-foreground">
-                  {orders.filter((o) => o.projectStatus === "In Progress").length} Active •{" "}
-                  {orders.filter((o) => o.projectStatus === "Completed").length} Completed
+                  {orders.filter((o) => o.projectStatus === "Pending Verification").length} Pending
+                  •{" "}
+                  {
+                    orders.filter(
+                      (o) => o.projectStatus === "Approved" || o.projectStatus === "Completed",
+                    ).length
+                  }{" "}
+                  Approved
                 </p>
               </button>
 
-              <div className="rounded-3xl border border-border/80 bg-background/60 p-5 shadow-sm backdrop-blur-2xl">
+              <button
+                type="button"
+                onClick={() => setDashboardSection("applications")}
+                className={`cursor-pointer rounded-3xl border p-5 text-left shadow-sm backdrop-blur-2xl transition-colors ${
+                  dashboardSection === "applications"
+                    ? "border-primary bg-background/85 ring-1 ring-primary/20"
+                    : "border-border/80 bg-background/60 hover:border-foreground/30"
+                }`}
+              >
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    Total Order Volume (BDT)
+                    Other Applications
+                  </span>
+                  <ClipboardCheck className="h-4 w-4 text-foreground" />
+                </div>
+                <p className="mt-2 font-display text-2xl font-bold tabular-nums">
+                  {applications.length}
+                </p>
+                <p className="font-mono text-[11px] text-muted-foreground">
+                  {applications.filter((a) => a.status === "Pending Verification").length} Pending •{" "}
+                  {applications.filter((a) => a.status === "Approved").length} Approved
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDashboardSection("notices")}
+                className={`cursor-pointer rounded-3xl border p-5 text-left shadow-sm backdrop-blur-2xl transition-colors ${
+                  dashboardSection === "notices"
+                    ? "border-primary bg-background/85 ring-1 ring-primary/20"
+                    : "border-border/80 bg-background/60 hover:border-foreground/30"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Volume (BDT) &amp; Notices
                   </span>
                   <Receipt className="h-4 w-4 text-foreground" />
                 </div>
@@ -1453,10 +2059,11 @@ function AccountPage() {
                   ৳{totalSpentBdt.toLocaleString("en-US")}
                   <span className="ml-1 text-xs font-semibold text-muted-foreground">BDT</span>
                 </p>
-                <p className="font-mono text-[11px] text-muted-foreground">
-                  {preferredBillingMethod} • BDT invoices ready
+                <p className="truncate font-mono text-[11px] text-muted-foreground">
+                  {publishedNotices.length} Website Notice
+                  {publishedNotices.length === 1 ? "" : "s"}
                 </p>
-              </div>
+              </button>
             </div>
 
             {/* Quick Highlight: Purchased Courses Direct Jump + Latest Website Notice */}
@@ -1570,20 +2177,7 @@ function AccountPage() {
                 }`}
               >
                 <BookOpen className="h-3.5 w-3.5" />
-                Purchases &amp; Courses ({coursePurchases.length})
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDashboardSection("notices")}
-                className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-5 text-xs font-semibold transition-colors ${
-                  dashboardSection === "notices"
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "border border-border/80 bg-background/70 text-foreground hover:bg-muted"
-                }`}
-              >
-                <Megaphone className="h-3.5 w-3.5" />
-                Notices ({publishedNotices.length})
+                Courses ({coursePurchases.length})
               </button>
 
               <button
@@ -1599,6 +2193,32 @@ function AccountPage() {
                 Project Orders ({orders.length})
               </button>
 
+              <button
+                type="button"
+                onClick={() => setDashboardSection("applications")}
+                className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-5 text-xs font-semibold transition-colors ${
+                  dashboardSection === "applications"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "border border-border/80 bg-background/70 text-foreground hover:bg-muted"
+                }`}
+              >
+                <ClipboardCheck className="h-3.5 w-3.5" />
+                Other Applications ({applications.length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDashboardSection("notices")}
+                className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-5 text-xs font-semibold transition-colors ${
+                  dashboardSection === "notices"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "border border-border/80 bg-background/70 text-foreground hover:bg-muted"
+                }`}
+              >
+                <Megaphone className="h-3.5 w-3.5" />
+                Notices ({publishedNotices.length})
+              </button>
+
               {isPrimaryAdmin && (
                 <button
                   type="button"
@@ -1609,13 +2229,12 @@ function AccountPage() {
                       : "border border-border/80 bg-background/70 text-foreground hover:bg-muted"
                   }`}
                 >
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  Admin Payment Verification (
-                  {
-                    adminQueuePurchases.filter((p) => p.paymentStatus === "Pending Verification")
-                      .length
-                  }{" "}
-                  Pending)
+                  {isAdminUnlocked ? (
+                    <Unlock className="h-3.5 w-3.5" />
+                  ) : (
+                    <Lock className="h-3.5 w-3.5" />
+                  )}
+                  Admin Verification ({totalAdminPendingCount} Pending)
                 </button>
               )}
             </div>
@@ -1813,11 +2432,19 @@ function AccountPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowCourseApplyModal(true)}
+                          className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Apply for Paid Course
+                        </button>
                         <Link
                           to="/graphic-design-course"
-                          className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background/80 px-3.5 text-[11px] font-semibold text-foreground hover:bg-muted"
                         >
-                          Browse Paid Course
+                          Course Details
                           <ArrowUpRight className="h-3.5 w-3.5" />
                         </Link>
                         <Link
@@ -1843,18 +2470,19 @@ function AccountPage() {
                           No courses enrolled or purchased yet
                         </h3>
                         <p className="mx-auto mt-1.5 max-w-md text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
-                          Enroll in the Advanced Graphic Design with AI Tools Live Course (৳6,000)
-                          or start the free Quran learning course — your verification status and
-                          lesson progress will appear here automatically.
+                          Apply for the Advanced Graphic Design with AI Tools Live Course (৳6,000)
+                          right here or start the free Quran learning course. Your application
+                          enters Pending Verification until approved by Primary Admin.
                         </p>
                         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                          <Link
-                            to="/graphic-design-course"
-                            className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground"
+                          <button
+                            type="button"
+                            onClick={() => setShowCourseApplyModal(true)}
+                            className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground"
                           >
-                            Enroll Graphic Design Course
-                            <ArrowUpRight className="h-3.5 w-3.5" />
-                          </Link>
+                            <Plus className="h-3.5 w-3.5" />
+                            Apply for Paid Course
+                          </button>
                           <Link
                             to="/courses"
                             className="inline-flex h-10 items-center gap-2 rounded-full border border-border bg-background px-5 text-xs font-semibold text-foreground hover:bg-muted"
@@ -1881,7 +2509,7 @@ function AccountPage() {
                                   </span>
                                   <span aria-hidden="true">·</span>
                                   <span className="font-mono tabular-nums">
-                                    Enrolled: {item.purchaseDate}
+                                    Applied: {item.purchaseDate}
                                   </span>
                                 </div>
 
@@ -1901,7 +2529,11 @@ function AccountPage() {
                                   ) : (
                                     <XCircle className="h-3 w-3" />
                                   )}
-                                  {item.paymentStatus}
+                                  {isVerified
+                                    ? "Approved • Access Active"
+                                    : isPending
+                                      ? "Pending Verification"
+                                      : "Rejected"}
                                 </span>
                               </div>
 
@@ -2025,7 +2657,7 @@ function AccountPage() {
                             Loading website notices…
                           </p>
                         </div>
-                      ) : (isPrimaryAdmin ? notices : publishedNotices).length === 0 ? (
+                      ) : (isAdminUnlocked ? notices : publishedNotices).length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-10 text-center">
                           <Megaphone className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
                           <h3 className="font-display text-lg font-bold">
@@ -2039,7 +2671,7 @@ function AccountPage() {
                         </div>
                       ) : (
                         <div className="space-y-4">
-                          {(isPrimaryAdmin ? notices : publishedNotices).map((notice) => (
+                          {(isAdminUnlocked ? notices : publishedNotices).map((notice) => (
                             <div
                               key={notice.id}
                               className={`rounded-2xl border p-5 shadow-xs transition-all ${
@@ -2064,7 +2696,7 @@ function AccountPage() {
                                   )}
                                 </div>
 
-                                {isPrimaryAdmin && (
+                                {isAdminUnlocked && (
                                   <div className="flex items-center gap-2">
                                     <button
                                       type="button"
@@ -2123,8 +2755,29 @@ function AccountPage() {
                       )}
                     </div>
 
-                    {/* Primary Admin Notice Publisher Form */}
-                    {isPrimaryAdmin && (
+                    {/* Primary Admin Notice Publisher Form (Requires Unlocked Admin Session) */}
+                    {isPrimaryAdmin && !isAdminUnlocked && (
+                      <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-border/80 bg-background/60 p-6 backdrop-blur-2xl">
+                        <div>
+                          <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                            Admin Notice Publisher Locked
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            নোটিশ পাবলিশ বা এডিট করতে আপনার Admin Password দিয়ে পোর্টাল আনলক করুন।
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowAdminLoginModal(true)}
+                          className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" />
+                          Unlock Admin Portal
+                        </button>
+                      </div>
+                    )}
+
+                    {isAdminUnlocked && (
                       <form
                         onSubmit={handlePublishNotice}
                         className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8"
@@ -2262,121 +2915,654 @@ function AccountPage() {
                   </div>
                 )}
 
-                {dashboardSection === "admin" && isPrimaryAdmin && (
+                {dashboardSection === "applications" && (
                   <div className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8">
-                    <div className="mb-6 border-b border-border/60 pb-5">
-                      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                        Admin Verification Controls
-                      </span>
-                      <h2 className="mt-1 font-display text-2xl font-bold tracking-tight">
-                        Course Payment Verification Queue
-                      </h2>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Review student TrxIDs submitted via Google Account and approve classroom
-                        access for paid courses.
-                      </p>
+                    <div className="mb-6 flex flex-col justify-between gap-4 border-b border-border/60 pb-5 sm:flex-row sm:items-center">
+                      <div>
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                          Workshop, Mentorship &amp; General Requests
+                        </span>
+                        <h2 className="mt-1 font-display text-2xl font-bold tracking-tight">
+                          Other Applications
+                        </h2>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Submit applications for AI Workshops, 1-on-1 Mentorship, Certificates,
+                          Partnerships, or Custom Quotes. Every submission waits for Admin approval.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowNewAppModal(true)}
+                        className="inline-flex h-10 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-[1.02]"
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        New Application
+                      </button>
                     </div>
 
-                    {adminQueuePurchases.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-border p-10 text-center text-xs text-muted-foreground">
-                        No course purchase submissions yet.
+                    {applicationsLoading ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <Loader2 className="mb-3 h-6 w-6 animate-spin text-muted-foreground" />
+                        <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                          Loading your applications…
+                        </p>
+                      </div>
+                    ) : applications.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-10 text-center">
+                        <ClipboardCheck className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                        <h3 className="font-display text-lg font-bold">
+                          No other applications submitted yet
+                        </h3>
+                        <p className="mx-auto mt-1.5 max-w-md text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
+                          Need a workshop seat, custom quote, mentorship session, or certificate
+                          verification? Submit your application here — Admin will manually approve
+                          it.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setShowNewAppModal(true)}
+                          className="mt-6 inline-flex h-10 cursor-pointer items-center gap-2 rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground shadow-sm"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Submit Application
+                        </button>
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        {adminQueuePurchases.map((p) => (
-                          <div
-                            key={p.id}
-                            className="rounded-2xl border border-border/80 bg-background/85 p-5 shadow-xs"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
-                              <div>
-                                <p className="font-display text-base font-bold text-foreground">
-                                  {p.studentName} ·{" "}
-                                  <span className="font-mono text-xs font-normal text-muted-foreground">
-                                    {p.studentEmail}
+                        {applications.map((app) => {
+                          const isApproved = app.status === "Approved";
+                          const isPending = app.status === "Pending Verification";
+                          return (
+                            <div
+                              key={app.id}
+                              className="rounded-2xl border border-border/80 bg-background/80 p-5 shadow-sm sm:p-6"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-lg bg-primary px-2.5 py-1 font-mono text-xs font-bold text-primary-foreground">
+                                    {app.applicationCode}
                                   </span>
-                                </p>
-                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                  {p.courseTitle} ({p.courseType})
-                                </p>
-                              </div>
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider ${
-                                  p.paymentStatus === "Verified"
-                                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                                    : p.paymentStatus === "Pending Verification"
-                                      ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
-                                      : "bg-destructive/15 text-destructive"
-                                }`}
-                              >
-                                {p.paymentStatus}
-                              </span>
-                            </div>
+                                  <span className="rounded-full border border-border/80 bg-muted/50 px-3 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-foreground">
+                                    {app.applicationCategory}
+                                  </span>
+                                  <span className="font-mono text-xs text-muted-foreground">
+                                    Submitted: {app.submittedDate}
+                                  </span>
+                                </div>
 
-                            <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
-                              <div>
-                                <span className="text-muted-foreground">Fee: </span>
-                                <strong className="font-mono">
-                                  {p.amountBdt > 0 ? `৳${p.amountBdt}` : "Free"}
-                                </strong>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Ref: </span>
-                                <strong className="font-mono">{p.paymentReference}</strong>
-                              </div>
-                              <div>
-                                <span className="text-muted-foreground">Phone: </span>
-                                <strong className="font-mono">{p.studentPhone || "N/A"}</strong>
-                              </div>
-                            </div>
-
-                            {p.courseType === "Paid Course" && (
-                              <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3 sm:flex-row sm:items-center">
-                                <input
-                                  type="text"
-                                  value={adminNoteDrafts[p.id] ?? p.adminNote ?? ""}
-                                  onChange={(e) =>
-                                    setAdminNoteDrafts((prev) => ({
-                                      ...prev,
-                                      [p.id]: e.target.value,
-                                    }))
-                                  }
-                                  placeholder="Optional verification note / batch link…"
-                                  className="h-9 flex-1 rounded-xl border border-border bg-background px-3 text-xs outline-none focus:border-primary"
-                                />
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      verifyingId === p.id || p.paymentStatus === "Verified"
-                                    }
-                                    onClick={() => handleAdminVerifyCourse(p, "Verified")}
-                                    className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
+                                <div className="flex flex-col items-end gap-1">
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                                      isApproved
+                                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                        : isPending
+                                          ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                          : "bg-destructive/15 text-destructive"
+                                    }`}
                                   >
-                                    {verifyingId === p.id ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    {isApproved ? (
+                                      <CheckCircle2 className="h-3 w-3" />
+                                    ) : isPending ? (
+                                      <Clock className="h-3 w-3" />
                                     ) : (
-                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                      <XCircle className="h-3 w-3" />
                                     )}
-                                    Verify Payment
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={
-                                      verifyingId === p.id || p.paymentStatus === "Rejected"
-                                    }
-                                    onClick={() => handleAdminVerifyCourse(p, "Rejected")}
-                                    className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-destructive/40 px-4 text-[11px] font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                                  >
-                                    <XCircle className="h-3.5 w-3.5" />
-                                    Reject
-                                  </button>
+                                    {app.status}
+                                  </span>
+                                  {app.approvedDate && (
+                                    <span className="font-mono text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                      Approved Date: {app.approvedDate}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
-                            )}
-                          </div>
-                        ))}
+
+                              <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                                <div>
+                                  <h3 className="font-display text-lg font-bold tracking-tight text-foreground">
+                                    {app.subject}
+                                  </h3>
+                                  <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                                    {app.details}
+                                  </p>
+                                  {app.adminNote && (
+                                    <p className="mt-2 rounded-xl border border-border/60 bg-muted/40 px-3 py-2 text-xs text-foreground">
+                                      <strong>Admin Note:</strong> {app.adminNote}
+                                    </p>
+                                  )}
+                                </div>
+                                {app.amountBdt > 0 && (
+                                  <div className="shrink-0 rounded-2xl border border-border/70 bg-muted/30 px-4 py-2.5 text-left sm:text-right">
+                                    <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                                      Fee (BDT)
+                                    </p>
+                                    <p className="font-display text-lg font-bold tabular-nums text-foreground">
+                                      ৳{app.amountBdt.toLocaleString("en-US")} BDT
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="mt-4 flex flex-wrap items-center gap-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                                <span>
+                                  Method:{" "}
+                                  <strong className="text-foreground">{app.preferredMethod}</strong>
+                                </span>
+                                {app.referenceCode && (
+                                  <span>
+                                    Ref:{" "}
+                                    <strong className="font-mono text-foreground">
+                                      {app.referenceCode}
+                                    </strong>
+                                  </span>
+                                )}
+                                <span>
+                                  Phone:{" "}
+                                  <strong className="font-mono text-foreground">
+                                    {app.applicantPhone || "N/A"}
+                                  </strong>
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
+                    )}
+                  </div>
+                )}
+
+                {dashboardSection === "admin" && isPrimaryAdmin && (
+                  <div className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8">
+                    {!isAdminUnlocked ? (
+                      <div className="mx-auto max-w-md py-6">
+                        <div className="mb-5 text-center">
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-muted/60 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
+                            <Lock className="h-3 w-3" />
+                            Admin Password Verification Required
+                          </span>
+                          <h2 className="mt-3 font-display text-2xl font-bold tracking-tight">
+                            Unlock Admin Verification Portal
+                          </h2>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            অর্ডার, কোর্স এবং অন্যান্য আবেদন Approve করার আগে আপনার এডমিন পাসওয়ার্ড
+                            দিয়ে পোর্টাল আনলক করুন।
+                          </p>
+                        </div>
+
+                        <form onSubmit={handleAdminPortalLogin} className="space-y-4">
+                          <div>
+                            <label className="mb-1 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                              Admin Email
+                            </label>
+                            <input
+                              type="email"
+                              required
+                              value={adminLoginEmail}
+                              onChange={(e) => setAdminLoginEmail(e.target.value)}
+                              className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                              Admin Password
+                            </label>
+                            <div className="relative">
+                              <input
+                                type={showAdminPassword ? "text" : "password"}
+                                required
+                                value={adminLoginPassword}
+                                onChange={(e) => setAdminLoginPassword(e.target.value)}
+                                placeholder="Enter admin password"
+                                className="h-10 w-full rounded-xl border border-border bg-background pl-3.5 pr-10 text-sm outline-none focus:border-primary"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowAdminPassword((p) => !p)}
+                                aria-label="Toggle password visibility"
+                                className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                              >
+                                {showAdminPassword ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {adminAuthError && (
+                            <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-3.5 py-2.5 text-xs font-medium text-destructive">
+                              {adminAuthError}
+                            </div>
+                          )}
+
+                          <button
+                            type="submit"
+                            disabled={adminAuthLoading}
+                            className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary px-6 text-xs font-semibold text-primary-foreground shadow-sm disabled:opacity-60"
+                          >
+                            {adminAuthLoading ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Unlock className="h-4 w-4" />
+                            )}
+                            Unlock Admin Controls
+                          </button>
+                        </form>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mb-6 flex flex-col justify-between gap-4 border-b border-border/60 pb-5 sm:flex-row sm:items-center">
+                          <div>
+                            <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                              Primary Admin Verification Center
+                            </span>
+                            <h2 className="mt-1 font-display text-2xl font-bold tracking-tight">
+                              Manual Approval &amp; Order Control
+                            </h2>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Only items manually approved here display as Approved on client &amp;
+                              student dashboards.
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleLockAdminPortal}
+                            className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-border/80 bg-background px-4 text-xs font-semibold text-foreground hover:bg-muted"
+                          >
+                            <Lock className="h-3.5 w-3.5" />
+                            Lock Admin
+                          </button>
+                        </div>
+
+                        {/* Admin Sub-tabs */}
+                        <div className="mb-6 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setAdminQueueTab("orders")}
+                            className={`cursor-pointer rounded-full px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-widest transition-all ${
+                              adminQueueTab === "orders"
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "border border-border/80 bg-muted/40 text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            Project Orders (
+                            {
+                              adminQueueOrders.filter(
+                                (o) => o.projectStatus === "Pending Verification",
+                              ).length
+                            }{" "}
+                            Pending)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdminQueueTab("courses")}
+                            className={`cursor-pointer rounded-full px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-widest transition-all ${
+                              adminQueueTab === "courses"
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "border border-border/80 bg-muted/40 text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            Course Applications (
+                            {
+                              adminQueuePurchases.filter(
+                                (p) => p.paymentStatus === "Pending Verification",
+                              ).length
+                            }{" "}
+                            Pending)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAdminQueueTab("applications")}
+                            className={`cursor-pointer rounded-full px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-widest transition-all ${
+                              adminQueueTab === "applications"
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "border border-border/80 bg-muted/40 text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            Other Applications (
+                            {
+                              adminQueueApplications.filter(
+                                (a) => a.status === "Pending Verification",
+                              ).length
+                            }{" "}
+                            Pending)
+                          </button>
+                        </div>
+
+                        {adminQueueTab === "orders" &&
+                          (adminQueueOrders.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-border p-10 text-center text-xs text-muted-foreground">
+                              No project order applications submitted yet.
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {adminQueueOrders.map((o) => (
+                                <div
+                                  key={o.id}
+                                  className="rounded-2xl border border-border/80 bg-background/85 p-5 shadow-xs"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+                                    <div>
+                                      <p className="font-display text-base font-bold text-foreground">
+                                        {o.orderNumber} · {o.projectTitle}
+                                      </p>
+                                      <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {o.clientName} ({o.clientEmail}) • {o.serviceCategory} (
+                                        {o.packageTier})
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <span className="rounded-full border border-border/80 bg-muted/60 px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider">
+                                        {o.billingStatus}
+                                      </span>
+                                      <span
+                                        className={`rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                                          o.projectStatus === "Completed" ||
+                                          o.projectStatus === "Approved"
+                                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                            : o.projectStatus === "Pending Verification"
+                                              ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                              : "bg-destructive/15 text-destructive"
+                                        }`}
+                                      >
+                                        {o.projectStatus}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                                    <div>
+                                      <span className="text-muted-foreground">Amount: </span>
+                                      <strong className="font-mono">
+                                        ৳{getOrderAmountBdt(o).toLocaleString("en-US")} BDT
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Method &amp; Ref:{" "}
+                                      </span>
+                                      <strong className="font-mono">
+                                        {o.billingMethod} ({o.billingReference})
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Order Date: </span>
+                                      <strong className="font-mono">{o.orderDate}</strong>
+                                    </div>
+                                  </div>
+
+                                  {o.projectNotes && (
+                                    <p className="mt-2 text-xs text-muted-foreground">
+                                      Scope: {o.projectNotes}
+                                    </p>
+                                  )}
+
+                                  <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3">
+                                    <input
+                                      type="text"
+                                      value={adminNoteDrafts[o.id] ?? o.adminNote ?? ""}
+                                      onChange={(e) =>
+                                        setAdminNoteDrafts((prev) => ({
+                                          ...prev,
+                                          [o.id]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Optional admin verification note for client…"
+                                      className="h-9 w-full rounded-xl border border-border bg-background px-3 text-xs outline-none focus:border-primary"
+                                    />
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          verifyingId === o.id || o.projectStatus === "Approved"
+                                        }
+                                        onClick={() =>
+                                          handleAdminVerifyOrder(o, "Approved", "Approved")
+                                        }
+                                        className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
+                                      >
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                        Approve Order
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          verifyingId === o.id || o.projectStatus === "Completed"
+                                        }
+                                        onClick={() =>
+                                          handleAdminVerifyOrder(o, "Completed", "Paid")
+                                        }
+                                        className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-4 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-500/25 disabled:opacity-50 dark:text-emerald-200"
+                                      >
+                                        <Check className="h-3.5 w-3.5" />
+                                        Mark Completed (Paid)
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          verifyingId === o.id || o.projectStatus === "Rejected"
+                                        }
+                                        onClick={() =>
+                                          handleAdminVerifyOrder(o, "Rejected", "Rejected")
+                                        }
+                                        className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-destructive/40 px-4 text-[11px] font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                                      >
+                                        <XCircle className="h-3.5 w-3.5" />
+                                        Reject
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+
+                        {adminQueueTab === "courses" &&
+                          (adminQueuePurchases.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-border p-10 text-center text-xs text-muted-foreground">
+                              No course enrollment applications submitted yet.
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {adminQueuePurchases.map((p) => (
+                                <div
+                                  key={p.id}
+                                  className="rounded-2xl border border-border/80 bg-background/85 p-5 shadow-xs"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+                                    <div>
+                                      <p className="font-display text-base font-bold text-foreground">
+                                        {p.studentName} ·{" "}
+                                        <span className="font-mono text-xs font-normal text-muted-foreground">
+                                          {p.studentEmail}
+                                        </span>
+                                      </p>
+                                      <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {p.courseTitle} ({p.courseType})
+                                      </p>
+                                    </div>
+                                    <span
+                                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                                        p.paymentStatus === "Verified"
+                                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                          : p.paymentStatus === "Pending Verification"
+                                            ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                            : "bg-destructive/15 text-destructive"
+                                      }`}
+                                    >
+                                      {p.paymentStatus === "Verified"
+                                        ? "Approved"
+                                        : p.paymentStatus}
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                                    <div>
+                                      <span className="text-muted-foreground">Fee: </span>
+                                      <strong className="font-mono">
+                                        {p.amountBdt > 0 ? `৳${p.amountBdt} BDT` : "Free"}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Ref: </span>
+                                      <strong className="font-mono">{p.paymentReference}</strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Phone: </span>
+                                      <strong className="font-mono">
+                                        {p.studentPhone || "N/A"}
+                                      </strong>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3 sm:flex-row sm:items-center">
+                                    <input
+                                      type="text"
+                                      value={adminNoteDrafts[p.id] ?? p.adminNote ?? ""}
+                                      onChange={(e) =>
+                                        setAdminNoteDrafts((prev) => ({
+                                          ...prev,
+                                          [p.id]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Optional verification note / batch link…"
+                                      className="h-9 flex-1 rounded-xl border border-border bg-background px-3 text-xs outline-none focus:border-primary"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          verifyingId === p.id || p.paymentStatus === "Verified"
+                                        }
+                                        onClick={() => handleAdminVerifyCourse(p, "Verified")}
+                                        className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
+                                      >
+                                        {verifyingId === p.id ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <CheckCircle2 className="h-3.5 w-3.5" />
+                                        )}
+                                        Approve Course
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          verifyingId === p.id || p.paymentStatus === "Rejected"
+                                        }
+                                        onClick={() => handleAdminVerifyCourse(p, "Rejected")}
+                                        className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-destructive/40 px-4 text-[11px] font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                                      >
+                                        <XCircle className="h-3.5 w-3.5" />
+                                        Reject
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+
+                        {adminQueueTab === "applications" &&
+                          (adminQueueApplications.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-border p-10 text-center text-xs text-muted-foreground">
+                              No service or workshop applications submitted yet.
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {adminQueueApplications.map((a) => (
+                                <div
+                                  key={a.id}
+                                  className="rounded-2xl border border-border/80 bg-background/85 p-5 shadow-xs"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+                                    <div>
+                                      <p className="font-display text-base font-bold text-foreground">
+                                        {a.applicationCode} · {a.subject}
+                                      </p>
+                                      <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {a.applicantName} ({a.applicantEmail}) •{" "}
+                                        {a.applicationCategory}
+                                      </p>
+                                    </div>
+                                    <span
+                                      className={`rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                                        a.status === "Approved"
+                                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                          : a.status === "Pending Verification"
+                                            ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                            : "bg-destructive/15 text-destructive"
+                                      }`}
+                                    >
+                                      {a.status}
+                                    </span>
+                                  </div>
+
+                                  <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
+                                    {a.details}
+                                  </p>
+
+                                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                                    <div>
+                                      <span className="text-muted-foreground">Method: </span>
+                                      <strong className="font-mono">{a.preferredMethod}</strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Ref / Fee: </span>
+                                      <strong className="font-mono">
+                                        {a.referenceCode || "N/A"}
+                                        {a.amountBdt > 0 ? ` • ৳${a.amountBdt} BDT` : ""}
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Phone: </span>
+                                      <strong className="font-mono">
+                                        {a.applicantPhone || "N/A"}
+                                      </strong>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3 sm:flex-row sm:items-center">
+                                    <input
+                                      type="text"
+                                      value={adminNoteDrafts[a.id] ?? a.adminNote ?? ""}
+                                      onChange={(e) =>
+                                        setAdminNoteDrafts((prev) => ({
+                                          ...prev,
+                                          [a.id]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Optional approval note or schedule link…"
+                                      className="h-9 flex-1 rounded-xl border border-border bg-background px-3 text-xs outline-none focus:border-primary"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={verifyingId === a.id || a.status === "Approved"}
+                                        onClick={() => handleAdminVerifyApplication(a, "Approved")}
+                                        className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
+                                      >
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                        Approve Application
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={verifyingId === a.id || a.status === "Rejected"}
+                                        onClick={() => handleAdminVerifyApplication(a, "Rejected")}
+                                        className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-destructive/40 px-4 text-[11px] font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                                      >
+                                        <XCircle className="h-3.5 w-3.5" />
+                                        Reject
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                      </>
                     )}
                   </div>
                 )}
@@ -2501,16 +3687,29 @@ function AccountPage() {
 
                                 <div className="flex flex-col items-end gap-1.5">
                                   <div className="flex flex-wrap items-center gap-2">
-                                    <span className="rounded-full border border-border/80 bg-muted/60 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
+                                    <span
+                                      className={`rounded-full border px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest ${
+                                        order.billingStatus === "Paid" ||
+                                        order.billingStatus === "Approved"
+                                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                                          : order.billingStatus === "Rejected"
+                                            ? "border-destructive/30 bg-destructive/10 text-destructive"
+                                            : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                                      }`}
+                                    >
                                       {order.billingStatus}
                                     </span>
                                     <span
                                       className={`rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest ${
-                                        order.projectStatus === "Completed"
+                                        order.projectStatus === "Completed" ||
+                                        order.projectStatus === "Approved"
                                           ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                                          : order.projectStatus === "Cancelled"
+                                          : order.projectStatus === "Cancelled" ||
+                                              order.projectStatus === "Rejected"
                                             ? "bg-destructive/15 text-destructive"
-                                            : "bg-primary/10 text-foreground"
+                                            : order.projectStatus === "Pending Verification"
+                                              ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                              : "bg-primary/10 text-foreground"
                                       }`}
                                     >
                                       {order.projectStatus}
@@ -2589,7 +3788,13 @@ function AccountPage() {
                                 </div>
                               </div>
 
-                              {/* Bottom Row: Download Actions & Status Controls */}
+                              {order.adminNote && (
+                                <p className="mt-3 rounded-xl border border-border/60 bg-muted/40 px-3.5 py-2 text-xs text-foreground">
+                                  <strong>Admin Note:</strong> {order.adminNote}
+                                </p>
+                              )}
+
+                              {/* Bottom Row: Download Actions & Verification Status */}
                               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-2">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <button
@@ -2623,21 +3828,15 @@ function AccountPage() {
                                   </button>
                                 </div>
 
-                                {order.projectStatus !== "Completed" &&
-                                  order.projectStatus !== "Cancelled" && (
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleUpdateOrderStatus(order, "Completed", "Paid")
-                                        }
-                                        className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full border border-border/70 bg-muted/50 px-3 text-[10px] font-bold uppercase tracking-wider text-foreground transition-colors hover:bg-muted"
-                                      >
-                                        <Check className="h-3 w-3" />
-                                        Mark Completed
-                                      </button>
-                                    </div>
-                                  )}
+                                <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  {order.projectStatus === "Pending Verification"
+                                    ? "Awaiting Admin Approval"
+                                    : order.projectStatus === "Completed"
+                                      ? "Approved & Completed by Admin"
+                                      : order.projectStatus === "Approved"
+                                        ? "Approved by Admin"
+                                        : order.projectStatus}
+                                </span>
                               </div>
                             </div>
                           );
@@ -2772,7 +3971,7 @@ function AccountPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                     Billing Method
@@ -2804,23 +4003,12 @@ function AccountPage() {
                     className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Payment Status
-                  </label>
-                  <select
-                    value={newBillingStatus}
-                    onChange={(e) => setNewBillingStatus(e.target.value as BillingStatus)}
-                    className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
-                  >
-                    {BILLING_STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-[11px] font-medium text-amber-900 dark:text-amber-200">
+                প্রতিটি নতুন প্রজেক্ট আবেদন শুরুতে <strong>Pending Verification</strong> অবস্থায় জমা
+                হবে। প্রাইমারি এডমিন ম্যানুয়ালি Approve করলে আপনার ড্যাশবোর্ডে{" "}
+                <strong>Approved</strong> হিসেবে দেখাবে।
               </div>
 
               <div>
@@ -2848,12 +4036,388 @@ function AccountPage() {
                 <button
                   type="submit"
                   disabled={orderSubmitting}
-                  className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-6 text-xs font-semibold text-primary-foreground shadow-md disabled:opacity-60"
+                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full bg-primary px-6 text-xs font-semibold text-primary-foreground shadow-md disabled:opacity-60"
                 >
                   {orderSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  Confirm &amp; Create Order
+                  Submit Project Application
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Apply for Paid Course Modal */}
+      {showCourseApplyModal && user && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md">
+          <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-border bg-background p-6 shadow-2xl sm:p-8">
+            <div className="mb-5 flex items-center justify-between border-b border-border/60 pb-4">
+              <div>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Course Enrollment Application
+                </span>
+                <h3 className="font-display text-xl font-bold tracking-tight">
+                  Apply for Paid Course
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCourseApplyModal(false)}
+                className="rounded-full p-2 text-muted-foreground hover:bg-muted"
+                aria-label="Close modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCourseApplication} className="space-y-4">
+              <div className="rounded-2xl border border-border/80 bg-muted/30 p-4">
+                <p className="font-display text-sm font-bold text-foreground">
+                  {GRAPHIC_DESIGN_COURSE.title}
+                </p>
+                <p className="mt-1 font-mono text-xs font-bold text-foreground">
+                  Course Fee: ৳{GRAPHIC_DESIGN_COURSE.priceBdt.toLocaleString("en-US")} BDT
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  bKash / Nagad Personal: +880 1410-957506 — সেন্ড মানি করে আপনার TrxID নিচে লিখুন।
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Payment Method
+                  </label>
+                  <select
+                    value={coursePayMethod}
+                    onChange={(e) => setCoursePayMethod(e.target.value as BillingMethod)}
+                    className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                  >
+                    {BILLING_METHODS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Phone / WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={VALIDATION_LIMITS.PHONE_MAX}
+                    value={courseStudentPhone}
+                    onChange={(e) => setCourseStudentPhone(e.target.value)}
+                    placeholder="+880 1XXX-XXXXXX"
+                    className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Transaction ID / Payment Reference
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={VALIDATION_LIMITS.BILLING_REFERENCE_MAX}
+                  value={coursePayRef}
+                  onChange={(e) => setCoursePayRef(e.target.value)}
+                  placeholder="e.g., BKH8A93K21P"
+                  className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCourseApplyModal(false)}
+                  className="h-10 rounded-full border border-border px-5 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={courseApplySubmitting}
+                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full bg-primary px-6 text-xs font-semibold text-primary-foreground shadow-md disabled:opacity-60"
+                >
+                  {courseApplySubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Submit Course Application
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Other / Service Application Modal */}
+      {showNewAppModal && user && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md">
+          <div className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl border border-border bg-background p-6 shadow-2xl sm:p-8">
+            <div className="mb-5 flex items-center justify-between border-b border-border/60 pb-4">
+              <div>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  General Request Application
+                </span>
+                <h3 className="font-display text-xl font-bold tracking-tight">
+                  Submit Other Application
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowNewAppModal(false)}
+                className="rounded-full p-2 text-muted-foreground hover:bg-muted"
+                aria-label="Close modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateServiceApplication} className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Application Category
+                  </label>
+                  <select
+                    value={appCategory}
+                    onChange={(e) => setAppCategory(e.target.value as ApplicationCategory)}
+                    className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                  >
+                    {APPLICATION_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Preferred Method
+                  </label>
+                  <select
+                    value={appMethod}
+                    onChange={(e) => setAppMethod(e.target.value as ApplicationMethod)}
+                    className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                  >
+                    {APPLICATION_METHODS.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Application Subject
+                </label>
+                <input
+                  type="text"
+                  required
+                  maxLength={VALIDATION_LIMITS.APPLICATION_SUBJECT_MAX}
+                  value={appSubject}
+                  onChange={(e) => setAppSubject(e.target.value)}
+                  placeholder="e.g., AI Workshop 2027 Seat Registration"
+                  className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Optional Fee (BDT ৳)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={500000}
+                    value={appAmountBdt}
+                    onChange={(e) => setAppAmountBdt(e.target.value)}
+                    className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Reference / TrxID
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={VALIDATION_LIMITS.APPLICATION_REFERENCE_MAX}
+                    value={appRef}
+                    onChange={(e) => setAppRef(e.target.value)}
+                    placeholder="Optional TrxID"
+                    className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Phone / WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={VALIDATION_LIMITS.PHONE_MAX}
+                    value={appPhone}
+                    onChange={(e) => setAppPhone(e.target.value)}
+                    placeholder="+880 1XXX-XXXXXX"
+                    className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Application Details
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  maxLength={VALIDATION_LIMITS.APPLICATION_DETAILS_MAX}
+                  value={appDetails}
+                  onChange={(e) => setAppDetails(e.target.value)}
+                  placeholder="Write full details of your request…"
+                  className="w-full rounded-xl border border-border bg-background p-3.5 text-sm outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewAppModal(false)}
+                  className="h-10 rounded-full border border-border px-5 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={appSubmitting}
+                  className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full bg-primary px-6 text-xs font-semibold text-primary-foreground shadow-md disabled:opacity-60"
+                >
+                  {appSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Submit Application
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Portal Login Modal (Accessible from Header even when logged in as viewer/admin) */}
+      {showAdminLoginModal && (
+        <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/60 p-4 backdrop-blur-md">
+          <div className="relative w-full max-w-md rounded-3xl border border-border bg-background p-6 shadow-2xl sm:p-8">
+            <div className="mb-5 flex items-center justify-between border-b border-border/60 pb-4">
+              <div>
+                <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                  Primary Admin Access
+                </span>
+                <h3 className="font-display text-xl font-bold tracking-tight">
+                  Admin Dashboard Login
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdminLoginModal(false)}
+                className="rounded-full p-2 text-muted-foreground hover:bg-muted"
+                aria-label="Close modal"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAdminPortalLogin} className="space-y-4">
+              <div>
+                <label className="mb-1 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Admin Email
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={adminLoginEmail}
+                  onChange={(e) => setAdminLoginEmail(e.target.value)}
+                  className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Admin Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showAdminPassword ? "text" : "password"}
+                    required
+                    value={adminLoginPassword}
+                    onChange={(e) => setAdminLoginPassword(e.target.value)}
+                    placeholder="Enter admin password"
+                    className="h-10 w-full rounded-xl border border-border bg-background pl-3.5 pr-10 text-sm outline-none focus:border-primary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword((p) => !p)}
+                    aria-label="Toggle password visibility"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                  >
+                    {showAdminPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {adminAuthError && (
+                <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-3.5 py-2.5 text-xs font-medium text-destructive">
+                  {adminAuthError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={adminAuthLoading}
+                className="inline-flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-primary px-6 text-xs font-semibold text-primary-foreground shadow-md disabled:opacity-60"
+              >
+                {adminAuthLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-4 w-4" />
+                )}
+                Login to Admin Dashboard
+              </button>
+
+              {(adminNeedsGoogleLink || adminNeedsEmailVerify) && (
+                <div className="space-y-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5">
+                  <p className="text-[11px] font-medium text-emerald-900 dark:text-emerald-200">
+                    পাসওয়ার্ড যাচাই হয়েছে! প্রাইমারি এডমিন Firebase টোকেন সক্রিয় করতে Google দিয়ে
+                    যাচাই করুন:
+                  </p>
+                  <button
+                    type="button"
+                    disabled={adminAuthLoading}
+                    onClick={handleCompleteAdminGoogleVerify}
+                    className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-emerald-700 px-4 text-[11px] font-semibold text-white hover:bg-emerald-800 disabled:opacity-60"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Complete Admin Google Sign-In
+                  </button>
+                  {adminNeedsEmailVerify && auth.currentUser && (
+                    <button
+                      type="button"
+                      onClick={() => sendAdminVerificationEmail(auth.currentUser!).catch(() => {})}
+                      className="inline-flex h-8 w-full cursor-pointer items-center justify-center gap-1.5 rounded-full border border-emerald-700/40 px-3 text-[10px] font-semibold text-emerald-900 dark:text-emerald-100"
+                    >
+                      Send Verification Email
+                    </button>
+                  )}
+                </div>
+              )}
             </form>
           </div>
         </div>

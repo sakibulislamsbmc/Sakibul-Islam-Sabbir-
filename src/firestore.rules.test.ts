@@ -63,7 +63,7 @@ describe("Firestore Security Rules — Dirty Dozen Verification", () => {
   it("9. Enforces Query Trust Test on /orders list queries", () => {
     const rules = getRules();
     expect(rules).toContain(
-      "allow list: if isVerifiedUser() && existing().uid == request.auth.uid;",
+      "allow list: if isVerifiedUser() && (existing().uid == request.auth.uid || isCourseAdmin());",
     );
   });
 
@@ -73,9 +73,10 @@ describe("Firestore Security Rules — Dirty Dozen Verification", () => {
     expect(rules).toContain("incoming().updatedAt == request.time");
   });
 
-  it("11. Enforces Terminal State Locking on completed or cancelled orders", () => {
+  it("11. Enforces Pending Verification creation lock on /orders (blocks client self-approval)", () => {
     const rules = getRules();
-    expect(rules).toContain("!(existing().projectStatus in ['Completed', 'Cancelled'])");
+    expect(rules).toContain("incoming().billingStatus == 'Pending Verification'");
+    expect(rules).toContain("incoming().projectStatus == 'Pending Verification'");
   });
 
   it("12. Locks immutable order fields (orderNumber, orderDate, amountUsd, createdAt)", () => {
@@ -86,9 +87,12 @@ describe("Firestore Security Rules — Dirty Dozen Verification", () => {
     expect(rules).toContain("incoming().createdAt == existing().createdAt");
   });
 
-  it("13. Enforces BDT amount immutability and allows completedDate on status update", () => {
+  it("13. Enforces BDT amount immutability and restricts completedDate/Paid updates to admin", () => {
     const rules = getRules();
     expect(rules).toContain("incoming().amountBdt == existing().amountBdt");
+    expect(rules).toContain(
+      "isCourseAdmin() &&\n            incoming().verifiedByEmail == request.auth.token.email",
+    );
     expect(rules).toContain("'completedDate'");
   });
 
@@ -113,5 +117,13 @@ describe("Firestore Security Rules — Dirty Dozen Verification", () => {
     expect(rules).toContain("incoming().amountBdt >= 6000");
     expect(rules).toContain("incoming().courseId == 'shohoj-sutre-quran-shikhi'");
     expect(rules).toContain("data.actionRoute.matches('^\\\\/[a-zA-Z0-9\\\\-_\\\\/]*$')");
+  });
+
+  it("17. Enforces Pending Verification creation and admin-only approval on /applications", () => {
+    const rules = getRules();
+    expect(rules).toContain("match /applications/{applicationId}");
+    expect(rules).toContain("incoming().status == 'Pending Verification'");
+    expect(rules).toContain("incoming().approvedDate == ''");
+    expect(rules).toContain("'approvedDate'");
   });
 });

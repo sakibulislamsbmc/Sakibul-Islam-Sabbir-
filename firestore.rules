@@ -58,6 +58,18 @@ service cloud.firestore {
       ];
     }
 
+    function isValidApplicationMethod(method) {
+      return method is string && method.size() <= 40 && method in [
+        'bKash',
+        'Nagad',
+        'Dutch-Bangla Bank',
+        'Visa / Mastercard',
+        'PayPal',
+        'Wire Transfer',
+        'Free Request'
+      ];
+    }
+
     // Validation Blueprint: UserProfile (/users/{userId})
     function isValidUserProfile(data) {
       return data.keys().hasAll([
@@ -139,6 +151,8 @@ service cloud.firestore {
         'billingReference',
         'billingStatus',
         'projectStatus',
+        'verifiedByEmail',
+        'adminNote',
         'orderDate',
         'completedDate',
         'deliveryEstimate',
@@ -149,7 +163,6 @@ service cloud.firestore {
         'updatedAt'
       ]) &&
       data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
-      data.uid == request.auth.uid &&
       data.orderNumber is string && data.orderNumber.size() >= 3 && data.orderNumber.size() <= 40 && data.orderNumber.matches('^[A-Z0-9\\-]+$') &&
       data.projectTitle is string && data.projectTitle.size() >= 2 && data.projectTitle.size() <= 120 &&
       data.serviceCategory is string && data.serviceCategory.size() <= 50 && data.serviceCategory in [
@@ -170,16 +183,22 @@ service cloud.firestore {
       isValidBillingMethod(data.billingMethod) &&
       data.billingReference is string && data.billingReference.size() >= 2 && data.billingReference.size() <= 80 &&
       data.billingStatus is string && data.billingStatus.size() <= 40 && data.billingStatus in [
-        'Paid',
         'Pending Verification',
-        'Installment (50% Paid)'
+        'Paid',
+        'Installment (50% Paid)',
+        'Rejected'
       ] &&
       data.projectStatus is string && data.projectStatus.size() <= 30 && data.projectStatus in [
+        'Pending Verification',
+        'Approved',
         'In Progress',
         'In Review',
         'Completed',
+        'Rejected',
         'Cancelled'
       ] &&
+      (!('verifiedByEmail' in data) || (data.verifiedByEmail is string && data.verifiedByEmail.size() >= 0 && data.verifiedByEmail.size() <= 150)) &&
+      (!('adminNote' in data) || (data.adminNote is string && data.adminNote.size() >= 0 && data.adminNote.size() <= 300)) &&
       data.orderDate is string && data.orderDate.size() >= 8 && data.orderDate.size() <= 32 &&
       (!('completedDate' in data) || (data.completedDate is string && data.completedDate.size() >= 0 && data.completedDate.size() <= 32)) &&
       data.deliveryEstimate is string && data.deliveryEstimate.size() >= 2 && data.deliveryEstimate.size() <= 60 &&
@@ -268,6 +287,75 @@ service cloud.firestore {
       data.updatedAt is timestamp;
     }
 
+    // Validation Blueprint: ServiceApplication (/applications/{applicationId})
+    function isValidServiceApplication(data) {
+      return data.keys().hasAll([
+        'uid',
+        'applicationCode',
+        'applicationCategory',
+        'subject',
+        'details',
+        'preferredMethod',
+        'referenceCode',
+        'amountBdt',
+        'applicantName',
+        'applicantEmail',
+        'applicantPhone',
+        'status',
+        'verifiedByEmail',
+        'adminNote',
+        'submittedDate',
+        'approvedDate',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid',
+        'applicationCode',
+        'applicationCategory',
+        'subject',
+        'details',
+        'preferredMethod',
+        'referenceCode',
+        'amountBdt',
+        'applicantName',
+        'applicantEmail',
+        'applicantPhone',
+        'status',
+        'verifiedByEmail',
+        'adminNote',
+        'submittedDate',
+        'approvedDate',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.applicationCode is string && data.applicationCode.size() >= 3 && data.applicationCode.size() <= 40 && data.applicationCode.matches('^[A-Z0-9\\-]+$') &&
+      data.applicationCategory is string && data.applicationCategory.size() <= 60 && data.applicationCategory in [
+        'AI Workshop 2027 Seat',
+        '1-on-1 Mentorship / Consultation',
+        'Custom Graphic / Video Quote',
+        'Certificate / Verification Request',
+        'Partnership / Collaboration',
+        'Other Request'
+      ] &&
+      data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 140 &&
+      data.details is string && data.details.size() >= 4 && data.details.size() <= 1500 &&
+      isValidApplicationMethod(data.preferredMethod) &&
+      data.referenceCode is string && data.referenceCode.size() >= 0 && data.referenceCode.size() <= 100 &&
+      (data.amountBdt is int || data.amountBdt is float) && data.amountBdt >= 0 && data.amountBdt <= 500000 &&
+      data.applicantName is string && data.applicantName.size() >= 1 && data.applicantName.size() <= 100 &&
+      data.applicantEmail is string && data.applicantEmail.size() >= 3 && data.applicantEmail.size() <= 150 &&
+      data.applicantPhone is string && data.applicantPhone.size() >= 0 && data.applicantPhone.size() <= 40 &&
+      data.status is string && data.status in ['Pending Verification', 'Approved', 'Rejected'] &&
+      data.verifiedByEmail is string && data.verifiedByEmail.size() >= 0 && data.verifiedByEmail.size() <= 150 &&
+      data.adminNote is string && data.adminNote.size() >= 0 && data.adminNote.size() <= 300 &&
+      data.submittedDate is string && data.submittedDate.size() >= 8 && data.submittedDate.size() <= 32 &&
+      data.approvedDate is string && data.approvedDate.size() >= 0 && data.approvedDate.size() <= 32 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
     // Validation Blueprint: WebsiteNotice (/notices/{noticeId})
     function isValidWebsiteNotice(data) {
       return data.keys().hasAll([
@@ -352,19 +440,24 @@ service cloud.firestore {
 
     // Collection: /orders/{orderId}
     match /orders/{orderId} {
-      allow get: if isVerifiedUser() && isValidId(orderId) && existing().uid == request.auth.uid;
-      allow list: if isVerifiedUser() && existing().uid == request.auth.uid;
+      allow get: if isVerifiedUser() && isValidId(orderId) && (existing().uid == request.auth.uid || isCourseAdmin());
+      allow list: if isVerifiedUser() && (existing().uid == request.auth.uid || isCourseAdmin());
       allow create: if isVerifiedUser() &&
         isValidId(orderId) &&
         isValidProjectOrder(incoming()) &&
+        incoming().uid == request.auth.uid &&
         incoming().clientEmail == request.auth.token.email &&
+        incoming().billingStatus == 'Pending Verification' &&
+        incoming().projectStatus == 'Pending Verification' &&
+        (!('completedDate' in incoming()) || incoming().completedDate == '') &&
+        (!('verifiedByEmail' in incoming()) || incoming().verifiedByEmail == '') &&
+        (!('adminNote' in incoming()) || incoming().adminNote == '') &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid));
       allow update: if isVerifiedUser() &&
         isValidId(orderId) &&
         isValidProjectOrder(incoming()) &&
-        existing().uid == request.auth.uid &&
         incoming().uid == existing().uid &&
         incoming().orderNumber == existing().orderNumber &&
         incoming().orderDate == existing().orderDate &&
@@ -377,23 +470,37 @@ service cloud.firestore {
         (!('amountBdt' in existing()) || ('amountBdt' in incoming() && incoming().amountBdt == existing().amountBdt)) &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
-        !(existing().projectStatus in ['Completed', 'Cancelled']) &&
         (
-          // Action 1: Update Order Notes or Billing Details
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'billingMethod',
-            'billingReference',
-            'billingStatus',
-            'projectNotes',
-            'updatedAt'
-          ]) ||
-          // Action 2: Update Order Status (e.g., Mark Completed or Cancelled)
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'projectStatus',
-            'billingStatus',
-            'completedDate',
-            'updatedAt'
-          ])
+          // Action 1: Owner updates notes/billing reference ONLY while Pending Verification or Rejected (cannot self-approve!)
+          (
+            existing().uid == request.auth.uid &&
+            existing().projectStatus in ['Pending Verification', 'Rejected'] &&
+            incoming().billingStatus == 'Pending Verification' &&
+            incoming().projectStatus == 'Pending Verification' &&
+            (!('adminNote' in incoming()) || incoming().adminNote == '') &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'billingMethod',
+              'billingReference',
+              'billingStatus',
+              'projectStatus',
+              'adminNote',
+              'projectNotes',
+              'updatedAt'
+            ])
+          ) ||
+          // Action 2: Primary Admin ONLY approves, marks Completed/Paid, or rejects submitted order
+          (
+            isCourseAdmin() &&
+            incoming().verifiedByEmail == request.auth.token.email &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'projectStatus',
+              'billingStatus',
+              'completedDate',
+              'verifiedByEmail',
+              'adminNote',
+              'updatedAt'
+            ])
+          )
         );
       allow delete: if false;
     }
@@ -474,7 +581,7 @@ service cloud.firestore {
               'updatedAt'
             ])
           ) ||
-          // Action 3: Primary Course Admin (sakibulislamsbmc@gmail.com) verifies or rejects submitted payment
+          // Action 3: Primary Admin (sakibulislamsbmc@gmail.com) verifies or rejects submitted payment
           (
             isCourseAdmin() &&
             incoming().verifiedByEmail == request.auth.token.email &&
@@ -482,6 +589,68 @@ service cloud.firestore {
               'paymentStatus',
               'verifiedByEmail',
               'adminNote',
+              'updatedAt'
+            ])
+          )
+        );
+      allow delete: if false;
+    }
+
+    // Collection: /applications/{applicationId}
+    match /applications/{applicationId} {
+      allow get: if isVerifiedUser() && isValidId(applicationId) && (existing().uid == request.auth.uid || isCourseAdmin());
+      allow list: if isVerifiedUser() && (existing().uid == request.auth.uid || isCourseAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(applicationId) &&
+        isValidServiceApplication(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().applicantEmail == request.auth.token.email &&
+        incoming().status == 'Pending Verification' &&
+        incoming().verifiedByEmail == '' &&
+        incoming().adminNote == '' &&
+        incoming().approvedDate == '' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerifiedUser() &&
+        isValidId(applicationId) &&
+        isValidServiceApplication(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().applicationCode == existing().applicationCode &&
+        incoming().applicationCategory == existing().applicationCategory &&
+        incoming().applicantName == existing().applicantName &&
+        incoming().applicantEmail == existing().applicantEmail &&
+        incoming().submittedDate == existing().submittedDate &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Action 1: Applicant updates or resubmits while Pending Verification or Rejected (cannot self-approve!)
+          (
+            existing().uid == request.auth.uid &&
+            existing().status in ['Pending Verification', 'Rejected'] &&
+            incoming().status == 'Pending Verification' &&
+            incoming().adminNote == '' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'subject',
+              'details',
+              'preferredMethod',
+              'referenceCode',
+              'amountBdt',
+              'applicantPhone',
+              'status',
+              'adminNote',
+              'updatedAt'
+            ])
+          ) ||
+          // Action 2: Primary Admin ONLY approves or rejects application
+          (
+            isCourseAdmin() &&
+            incoming().verifiedByEmail == request.auth.token.email &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status',
+              'verifiedByEmail',
+              'adminNote',
+              'approvedDate',
               'updatedAt'
             ])
           )

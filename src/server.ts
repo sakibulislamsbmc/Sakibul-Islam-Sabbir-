@@ -210,7 +210,9 @@ function extractSafeWebSources(response: unknown): Array<{ title: string; url: s
   return sources;
 }
 
-async function readLocalEnvGeminiKey(): Promise<string> {
+async function readLocalEnvVar(varName: string): Promise<string> {
+  const fromProcess = process.env[varName]?.trim();
+  if (fromProcess) return fromProcess;
   try {
     const fs = await import("node:fs");
     const path = await import("node:path");
@@ -223,7 +225,7 @@ async function readLocalEnvGeminiKey(): Promise<string> {
       const eqIdx = line.indexOf("=");
       if (eqIdx <= 0) continue;
       const key = line.slice(0, eqIdx).trim();
-      if (key === "GEMINI_API_KEY") {
+      if (key === varName) {
         return line
           .slice(eqIdx + 1)
           .trim()
@@ -234,6 +236,216 @@ async function readLocalEnvGeminiKey(): Promise<string> {
     // Ignore filesystem errors on edge runtimes
   }
   return "";
+}
+
+async function readLocalEnvGeminiKey(): Promise<string> {
+  return readLocalEnvVar("GEMINI_API_KEY");
+}
+
+const ADMIN_LOGIN_WINDOW_MS = 15 * 60_000;
+const ADMIN_LOGIN_MAX_ATTEMPTS = 8;
+const adminLoginBuckets = new Map<string, number[]>();
+const ADMIN_COOKIE_NAME = "ss_admin_gate";
+
+function isAdminLoginRateLimited(ip: string, now: number): boolean {
+  const attempts = (adminLoginBuckets.get(ip) ?? []).filter(
+    (ts) => now - ts < ADMIN_LOGIN_WINDOW_MS,
+  );
+  if (attempts.length >= ADMIN_LOGIN_MAX_ATTEMPTS) {
+    adminLoginBuckets.set(ip, attempts);
+    return true;
+  }
+  attempts.push(now);
+  adminLoginBuckets.set(ip, attempts);
+  return false;
+}
+
+function parseCookies(cookieHeader: string | null): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!cookieHeader) return out;
+  for (const part of cookieHeader.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx <= 0) continue;
+    const k = part.slice(0, idx).trim();
+    const v = part.slice(idx + 1).trim();
+    if (k) out[k] = decodeURIComponent(v);
+  }
+  return out;
+}
+
+async function verifyAdminSessionToken(
+  token: string | undefined,
+  secret: string,
+  expectedEmail: string,
+): Promise<boolean> {
+  if (!token || !secret || !expectedEmail) return false;
+  const parts = token.split(".");
+  if (parts.length !== 2) return false;
+  const [payloadB64, sigB64] = parts;
+  if (!payloadB64 || !sigB64) return false;
+  try {
+    const crypto = await import("node:crypto");
+    const expectedSig = crypto.createHmac("sha256", secret).update(payloadB64).digest("base64url");
+    const sigBuf = Buffer.from(sigB64, "utf8");
+    const expBuf = Buffer.from(expectedSig, "utf8");
+    if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+      return false;
+    }
+    const decoded = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8")) as {
+      email?: string;
+      exp?: number;
+    };
+    return (
+      decoded.email?.toLowerCase() === expectedEmail.toLowerCase() &&
+      typeof decoded.exp === "number" &&
+      decoded.exp > Date.now()
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function handleAdminAuthRequest(request: Request, pathname: string): Promise<Response> {
+  const adminEmail = (await readLocalEnvVar("ADMIN_EMAIL")).toLowerCase();
+  const adminHash = await readLocalEnvVar("ADMIN_PASSWORD_HASH");
+  const sessionSecret = await readLocalEnvVar("ADMIN_SESSION_SECRET");
+  const isHttps = request.url.startsWith("https://");
+
+  if (pathname === "/api/admin/session") {
+    const cookies = parseCookies(request.headers.get("cookie"));
+    const verified = await verifyAdminSessionToken(
+      cookies[ADMIN_COOKIE_NAME],
+      sessionSecret,
+      adminEmail,
+    );
+    return new Response(
+      JSON.stringify({ authenticated: verified, email: verified ? adminEmail : null }),
+      {
+        status: 200,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      },
+    );
+  }
+
+  if (pathname === "/api/admin/logout" && request.method === "POST") {
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "set-cookie": `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${isHttps ? "; Secure" : ""}`,
+      },
+    });
+  }
+
+  if (pathname === "/api/admin/login") {
+    if (request.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+
+    const now = Date.now();
+    if (isAdminLoginRateLimited(getClientIp(request), now)) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error:
+            "অনেকবার ভুল প্রচেষ্টার কারণে লগইন সাময়িকভাবে সীমিত করা হয়েছে। ১৫ মিনিট পর চেষ্টা করুন।",
+        }),
+        {
+          status: 429,
+          headers: { "content-type": "application/json; charset=utf-8", "retry-after": "900" },
+        },
+      );
+    }
+
+    if (!adminEmail || !adminHash || !sessionSecret) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Server admin authentication is not configured." }),
+        { status: 503, headers: { "content-type": "application/json; charset=utf-8" } },
+      );
+    }
+
+    let body: { email?: unknown; password?: unknown };
+    try {
+      const raw = await request.text();
+      if (raw.length > 4096) {
+        return new Response(JSON.stringify({ ok: false, error: "Payload too large" }), {
+          status: 413,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        });
+      }
+      body = JSON.parse(raw) as { email?: unknown; password?: unknown };
+    } catch {
+      return new Response(JSON.stringify({ ok: false, error: "Invalid request payload" }), {
+        status: 400,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+
+    const submittedEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const submittedPassword = typeof body.password === "string" ? body.password : "";
+
+    const crypto = await import("node:crypto");
+    const emailBuf = Buffer.from(submittedEmail, "utf8");
+    const targetEmailBuf = Buffer.from(adminEmail, "utf8");
+    const emailMatches =
+      emailBuf.length === targetEmailBuf.length && crypto.timingSafeEqual(emailBuf, targetEmailBuf);
+
+    let passwordMatches = false;
+    const hashParts = adminHash.split(":");
+    if (hashParts.length === 3 && hashParts[0] === "scrypt") {
+      const [, salt, expectedHex] = hashParts;
+      if (salt && expectedHex && submittedPassword.length > 0 && submittedPassword.length <= 256) {
+        const derived = crypto.scryptSync(submittedPassword, salt, 64);
+        const expectedBuf = Buffer.from(expectedHex, "hex");
+        passwordMatches =
+          derived.length === expectedBuf.length && crypto.timingSafeEqual(derived, expectedBuf);
+      }
+    }
+
+    if (!emailMatches || !passwordMatches) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "ইমেইল অথবা পাসওয়ার্ড সঠিক নয়। শুধুমাত্র প্রাইমারি এডমিন লগইন করতে পারবেন।",
+        }),
+        {
+          status: 401,
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          },
+        },
+      );
+    }
+
+    const payloadB64 = Buffer.from(
+      JSON.stringify({ email: adminEmail, exp: now + 12 * 60 * 60 * 1000 }),
+      "utf8",
+    ).toString("base64url");
+    const sig = crypto.createHmac("sha256", sessionSecret).update(payloadB64).digest("base64url");
+    const token = `${payloadB64}.${sig}`;
+
+    return new Response(JSON.stringify({ ok: true, email: adminEmail }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "set-cookie": `${ADMIN_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200${isHttps ? "; Secure" : ""}`,
+      },
+    });
+  }
+
+  return new Response(JSON.stringify({ error: "Not found" }), {
+    status: 404,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
 }
 
 function isKeyError(err: unknown): boolean {
@@ -499,6 +711,9 @@ export default {
       }
       if (url.pathname === "/api/assistant-chat") {
         return withSecurityHeaders(await handleAssistantChatRequest(request));
+      }
+      if (url.pathname.startsWith("/api/admin/")) {
+        return withSecurityHeaders(await handleAdminAuthRequest(request, url.pathname));
       }
 
       const handler = await getServerEntry();
