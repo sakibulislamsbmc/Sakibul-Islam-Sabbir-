@@ -92,12 +92,26 @@ describe("Firestore Security Rules — Dirty Dozen Verification", () => {
     expect(rules).toContain("'completedDate'");
   });
 
-  it("14. Restricts /notices writes to verified admins and published reads on list", () => {
+  it("14. Restricts /notices writes to verified primary admin only and published reads on list", () => {
     const rules = getRules();
     expect(rules).toContain("match /notices/{noticeId}");
     expect(rules).toContain(
       "allow list: if isVerifiedUser() && (existing().isPublished == true || isCourseAdmin());",
     );
     expect(rules).toContain("allow create: if isCourseAdmin() &&");
+  });
+
+  it("15. Locks admin role exclusively to primary admin email sakibulislamsbmc@gmail.com", () => {
+    const rules = getRules();
+    expect(rules).toContain("request.auth.token.email == 'sakibulislamsbmc@gmail.com'");
+    expect(rules).not.toContain("sakibulislam.rc@gmail.com");
+  });
+
+  it("16. Blocks paid-course-as-free privilege bypass and unsafe notice routes", () => {
+    const rules = getRules();
+    expect(rules).toContain("incoming().courseId == 'advanced-graphic-design-ai-live'");
+    expect(rules).toContain("incoming().amountBdt >= 6000");
+    expect(rules).toContain("incoming().courseId == 'shohoj-sutre-quran-shikhi'");
+    expect(rules).toContain("data.actionRoute.matches('^\\\\/[a-zA-Z0-9\\\\-_\\\\/]*$')");
   });
 });

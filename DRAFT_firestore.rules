@@ -28,12 +28,11 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
+    // Primary Admin Lock: ONLY sakibulislamsbmc@gmail.com with verified email holds admin privileges
     function isCourseAdmin() {
       return isVerifiedUser() &&
-        request.auth.token.email in [
-          'sakibulislamsbmc@gmail.com',
-          'sakibulislam.rc@gmail.com'
-        ];
+        'email' in request.auth.token &&
+        request.auth.token.email == 'sakibulislamsbmc@gmail.com';
     }
 
     function isValidBillingMethod(method) {
@@ -246,7 +245,7 @@ service cloud.firestore {
       data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
       data.courseId is string && data.courseId.size() >= 2 && data.courseId.size() <= 80 && data.courseId.matches('^[a-z0-9\\-]+$') &&
       data.courseTitle is string && data.courseTitle.size() >= 2 && data.courseTitle.size() <= 150 &&
-      data.courseRoute is string && data.courseRoute.size() >= 1 && data.courseRoute.size() <= 100 &&
+      data.courseRoute is string && data.courseRoute.size() >= 1 && data.courseRoute.size() <= 100 && data.courseRoute in ['/courses', '/graphic-design-course'] &&
       data.courseType is string && data.courseType in ['Paid Course', 'Free Course'] &&
       (data.amountBdt is int || data.amountBdt is float) && data.amountBdt >= 0 && data.amountBdt <= 500000 &&
       isValidCoursePaymentMethod(data.paymentMethod) &&
@@ -306,6 +305,7 @@ service cloud.firestore {
       data.body is string && data.body.size() >= 4 && data.body.size() <= 1500 &&
       data.actionLabel is string && data.actionLabel.size() >= 0 && data.actionLabel.size() <= 60 &&
       data.actionRoute is string && data.actionRoute.size() >= 0 && data.actionRoute.size() <= 120 &&
+      (data.actionRoute == '' || data.actionRoute.matches('^\\/[a-zA-Z0-9\\-_\\/]*$')) &&
       data.isPublished is bool &&
       data.publishedDate is string && data.publishedDate.size() >= 8 && data.publishedDate.size() <= 32 &&
       data.publishedByEmail is string && data.publishedByEmail.size() >= 3 && data.publishedByEmail.size() <= 150 &&
@@ -321,6 +321,7 @@ service cloud.firestore {
         isValidId(userId) &&
         request.auth.uid == userId &&
         isValidUserProfile(incoming()) &&
+        incoming().email == request.auth.token.email &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
       allow update: if isVerifiedUser() &&
@@ -328,6 +329,7 @@ service cloud.firestore {
         request.auth.uid == userId &&
         isValidUserProfile(incoming()) &&
         incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
         (
@@ -355,6 +357,7 @@ service cloud.firestore {
       allow create: if isVerifiedUser() &&
         isValidId(orderId) &&
         isValidProjectOrder(incoming()) &&
+        incoming().clientEmail == request.auth.token.email &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time &&
         exists(/databases/$(database)/documents/users/$(request.auth.uid));
@@ -365,6 +368,11 @@ service cloud.firestore {
         incoming().uid == existing().uid &&
         incoming().orderNumber == existing().orderNumber &&
         incoming().orderDate == existing().orderDate &&
+        incoming().projectTitle == existing().projectTitle &&
+        incoming().serviceCategory == existing().serviceCategory &&
+        incoming().packageTier == existing().packageTier &&
+        incoming().clientName == existing().clientName &&
+        incoming().clientEmail == existing().clientEmail &&
         incoming().amountUsd == existing().amountUsd &&
         (!('amountBdt' in existing()) || ('amountBdt' in incoming() && incoming().amountBdt == existing().amountBdt)) &&
         incoming().createdAt == existing().createdAt &&
@@ -398,13 +406,16 @@ service cloud.firestore {
         isValidId(purchaseId) &&
         isValidCoursePurchase(incoming()) &&
         incoming().uid == request.auth.uid &&
+        incoming().studentEmail == request.auth.token.email &&
+        purchaseId == request.auth.uid + '_' + incoming().courseId &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time &&
         (
           (
             incoming().courseType == 'Paid Course' &&
+            incoming().courseId == 'advanced-graphic-design-ai-live' &&
             incoming().paymentStatus == 'Pending Verification' &&
-            incoming().amountBdt > 0 &&
+            incoming().amountBdt >= 6000 &&
             incoming().verifiedByEmail == '' &&
             incoming().adminNote == '' &&
             incoming().completedLessonIds.size() == 0 &&
@@ -413,9 +424,12 @@ service cloud.firestore {
           ) ||
           (
             incoming().courseType == 'Free Course' &&
+            incoming().courseId == 'shohoj-sutre-quran-shikhi' &&
             incoming().paymentStatus == 'Verified' &&
             incoming().amountBdt == 0 &&
-            incoming().paymentMethod == 'Free Enrollment'
+            incoming().paymentMethod == 'Free Enrollment' &&
+            incoming().verifiedByEmail == '' &&
+            incoming().adminNote == ''
           )
         );
       allow update: if isVerifiedUser() &&
@@ -423,8 +437,12 @@ service cloud.firestore {
         isValidCoursePurchase(incoming()) &&
         incoming().uid == existing().uid &&
         incoming().courseId == existing().courseId &&
+        incoming().courseTitle == existing().courseTitle &&
+        incoming().courseRoute == existing().courseRoute &&
         incoming().courseType == existing().courseType &&
         incoming().amountBdt == existing().amountBdt &&
+        incoming().studentName == existing().studentName &&
+        incoming().studentEmail == existing().studentEmail &&
         incoming().purchaseDate == existing().purchaseDate &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
@@ -456,9 +474,10 @@ service cloud.firestore {
               'updatedAt'
             ])
           ) ||
-          // Action 3: Course Admin verifies or rejects submitted payment
+          // Action 3: Primary Course Admin (sakibulislamsbmc@gmail.com) verifies or rejects submitted payment
           (
             isCourseAdmin() &&
+            incoming().verifiedByEmail == request.auth.token.email &&
             incoming().diff(existing()).affectedKeys().hasOnly([
               'paymentStatus',
               'verifiedByEmail',
@@ -477,6 +496,7 @@ service cloud.firestore {
       allow create: if isCourseAdmin() &&
         isValidId(noticeId) &&
         isValidWebsiteNotice(incoming()) &&
+        incoming().publishedByEmail == request.auth.token.email &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
       allow update: if isCourseAdmin() &&

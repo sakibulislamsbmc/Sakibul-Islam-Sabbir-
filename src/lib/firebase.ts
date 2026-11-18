@@ -113,14 +113,38 @@ export type BillingStatus = (typeof BILLING_STATUSES)[number];
 export const PROJECT_STATUSES = ["In Progress", "In Review", "Completed", "Cancelled"] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
-export const COURSE_ADMIN_EMAILS = [
-  "sakibulislamsbmc@gmail.com",
-  "sakibulislam.rc@gmail.com",
-] as const;
+export const PRIMARY_ADMIN_EMAIL = "sakibulislamsbmc@gmail.com" as const;
+
+export const COURSE_ADMIN_EMAILS = [PRIMARY_ADMIN_EMAIL] as const;
 
 export function isCourseAdminEmail(email?: string | null): boolean {
   if (!email) return false;
-  return (COURSE_ADMIN_EMAILS as readonly string[]).includes(email.toLowerCase());
+  return email.trim().toLowerCase() === PRIMARY_ADMIN_EMAIL;
+}
+
+export function isPrimaryAdminUser(
+  user?: { email?: string | null; emailVerified?: boolean } | null,
+): boolean {
+  if (!user?.email || user.emailVerified !== true) return false;
+  return user.email.trim().toLowerCase() === PRIMARY_ADMIN_EMAIL;
+}
+
+const SAFE_APP_ROUTES = new Set<string>([
+  "/",
+  "/projects",
+  "/portfolio",
+  "/about-me",
+  "/thankful",
+  "/contact",
+  "/courses",
+  "/graphic-design-course",
+  "/workshop",
+  "/account",
+]);
+
+export function isSafeAppRoute(route?: string | null): boolean {
+  if (!route) return false;
+  return SAFE_APP_ROUTES.has(route.trim());
 }
 
 export const COURSE_PAYMENT_METHODS = [...BILLING_METHODS, "Free Enrollment"] as const;

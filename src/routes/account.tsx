@@ -68,7 +68,8 @@ import {
   type CoursePurchaseRecord,
   db,
   handleFirestoreError,
-  isCourseAdminEmail,
+  isPrimaryAdminUser,
+  isSafeAppRoute,
   logOutUser,
   NOTICE_CATEGORIES,
   type NoticeCategory,
@@ -208,6 +209,15 @@ function buildOrderReceiptText(
   ].join("\n");
 }
 
+function escapeHtml(raw: string): string {
+  return String(raw || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function buildOrderInvoiceHtml(
   order: ProjectOrderRecord,
   profile: UserProfileRecord | null,
@@ -215,11 +225,28 @@ function buildOrderInvoiceHtml(
   const amountBdt = getOrderAmountBdt(order);
   const completedDate = getOrderCompletedDate(order);
 
+  const safeOrderNumber = escapeHtml(order.orderNumber);
+  const safeBillingStatus = escapeHtml(order.billingStatus);
+  const safeOrderDate = escapeHtml(order.orderDate);
+  const safeCompletedDate = completedDate ? escapeHtml(completedDate) : "";
+  const safeClientName = escapeHtml(order.clientName);
+  const safeClientEmail = escapeHtml(order.clientEmail);
+  const safeCompany = escapeHtml(profile?.company || "Direct Client");
+  const safeLocation = escapeHtml(profile?.location || "Bangladesh");
+  const safeBillingMethod = escapeHtml(order.billingMethod);
+  const safeBillingReference = escapeHtml(order.billingReference);
+  const safeProjectStatus = escapeHtml(order.projectStatus);
+  const safeDeliveryEstimate = escapeHtml(order.deliveryEstimate);
+  const safeProjectTitle = escapeHtml(order.projectTitle);
+  const safeProjectNotes = escapeHtml(order.projectNotes || "Full deliverable package");
+  const safeServiceCategory = escapeHtml(order.serviceCategory);
+  const safePackageTier = escapeHtml(order.packageTier);
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Invoice ${order.orderNumber} — Sakibul Islam Sabbir</title>
+  <title>Invoice ${safeOrderNumber} — Sakibul Islam Sabbir</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 40px 20px; }
     .card { max-width: 760px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px; padding: 40px; box-shadow: 0 20px 50px rgba(15, 23, 42, 0.06); }
@@ -246,25 +273,25 @@ function buildOrderInvoiceHtml(
         <div style="font-size: 13px; color: #64748b; margin-top: 4px;">Creative Designer &amp; Digital Media Professional • Rajshahi, Bangladesh</div>
       </div>
       <div style="text-align: right;">
-        <span class="badge">${order.billingStatus}</span>
-        ${completedDate ? `<div class="completed-line">Completed Date: ${completedDate}</div>` : ""}
-        <div style="font-size: 18px; font-weight: 800; margin-top: 8px;">${order.orderNumber}</div>
-        <div style="font-size: 12px; color: #64748b;">Order Date: ${order.orderDate}</div>
+        <span class="badge">${safeBillingStatus}</span>
+        ${safeCompletedDate ? `<div class="completed-line">Completed Date: ${safeCompletedDate}</div>` : ""}
+        <div style="font-size: 18px; font-weight: 800; margin-top: 8px;">${safeOrderNumber}</div>
+        <div style="font-size: 12px; color: #64748b;">Order Date: ${safeOrderDate}</div>
       </div>
     </div>
     <div class="grid">
       <div>
         <div class="label">Billed To</div>
-        <div class="val">${order.clientName}</div>
-        <div style="font-size: 13px; color: #475569;">${order.clientEmail}</div>
-        <div style="font-size: 13px; color: #475569;">${profile?.company || "Direct Client"} • ${profile?.location || "Bangladesh"}</div>
+        <div class="val">${safeClientName}</div>
+        <div style="font-size: 13px; color: #475569;">${safeClientEmail}</div>
+        <div style="font-size: 13px; color: #475569;">${safeCompany} • ${safeLocation}</div>
       </div>
       <div>
         <div class="label">Billing &amp; Delivery Details</div>
-        <div class="val">Method: ${order.billingMethod}</div>
-        <div style="font-size: 13px; color: #475569;">Reference: ${order.billingReference}</div>
-        <div style="font-size: 13px; color: #475569;">Project Status: ${order.projectStatus} (${order.deliveryEstimate})</div>
-        ${completedDate ? `<div style="font-size: 13px; font-weight: 600; color: #047857; margin-top: 3px;">Completed Date: ${completedDate}</div>` : ""}
+        <div class="val">Method: ${safeBillingMethod}</div>
+        <div style="font-size: 13px; color: #475569;">Reference: ${safeBillingReference}</div>
+        <div style="font-size: 13px; color: #475569;">Project Status: ${safeProjectStatus} (${safeDeliveryEstimate})</div>
+        ${safeCompletedDate ? `<div style="font-size: 13px; font-weight: 600; color: #047857; margin-top: 3px;">Completed Date: ${safeCompletedDate}</div>` : ""}
       </div>
     </div>
     <table>
@@ -279,11 +306,11 @@ function buildOrderInvoiceHtml(
       <tbody>
         <tr>
           <td>
-            <div style="font-weight: 700;">${order.projectTitle}</div>
-            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">${order.projectNotes || "Full deliverable package"}</div>
+            <div style="font-weight: 700;">${safeProjectTitle}</div>
+            <div style="font-size: 12px; color: #64748b; margin-top: 4px;">${safeProjectNotes}</div>
           </td>
-          <td>${order.serviceCategory}</td>
-          <td>${order.packageTier}</td>
+          <td>${safeServiceCategory}</td>
+          <td>${safePackageTier}</td>
           <td style="text-align: right; font-weight: 700;">৳${amountBdt.toLocaleString("en-US")} BDT</td>
         </tr>
       </tbody>
@@ -291,8 +318,8 @@ function buildOrderInvoiceHtml(
     <div class="total-box">
       <div>
         <div class="label">Payment Method &amp; Verification</div>
-        <div class="val">${order.billingMethod} (${order.billingReference}) — ${order.billingStatus}</div>
-        ${completedDate ? `<div class="completed-line">Completed Date: ${completedDate}</div>` : ""}
+        <div class="val">${safeBillingMethod} (${safeBillingReference}) — ${safeBillingStatus}</div>
+        ${safeCompletedDate ? `<div class="completed-line">Completed Date: ${safeCompletedDate}</div>` : ""}
       </div>
       <div style="text-align: right;">
         <div class="label">Total Billed (BDT)</div>
@@ -367,9 +394,17 @@ function AccountPage() {
   const [newDeliveryEstimate, setNewDeliveryEstimate] = useState("14 Days");
   const [newProjectNotes, setNewProjectNotes] = useState("");
 
+  const isPrimaryAdmin = isPrimaryAdminUser(user);
+
   useEffect(() => {
     setNewOrderDate((prev) => prev || todayIsoDate());
   }, []);
+
+  useEffect(() => {
+    if (!isPrimaryAdmin && dashboardSection === "admin") {
+      setDashboardSection("purchases");
+    }
+  }, [isPrimaryAdmin, dashboardSection]);
 
   // Track Auth state
   useEffect(() => {
@@ -554,7 +589,7 @@ function AccountPage() {
     }
 
     let unsubAdmin: (() => void) | undefined;
-    if (isCourseAdminEmail(user.email)) {
+    if (isPrimaryAdminUser(user)) {
       const adminQuery = query(collection(db, "coursePurchases"));
       unsubAdmin = onSnapshot(
         adminQuery,
@@ -594,7 +629,7 @@ function AccountPage() {
     };
   }, [authReady, user]);
 
-  // Subscribe to published Website Notices (or all notices for verified admins)
+  // Subscribe to published Website Notices (or all notices for verified primary admin ONLY)
   useEffect(() => {
     if (!authReady || !user) {
       setNotices([]);
@@ -603,8 +638,7 @@ function AccountPage() {
 
     setNoticesLoading(true);
     const noticesPath = "notices";
-    const isAdmin = isCourseAdminEmail(user.email);
-    const noticesQuery = isAdmin
+    const noticesQuery = isPrimaryAdminUser(user)
       ? query(collection(db, "notices"))
       : query(collection(db, "notices"), where("isPublished", "==", true));
 
@@ -770,10 +804,7 @@ function AccountPage() {
         displayName || user.displayName || "Valued Client",
         VALIDATION_LIMITS.DISPLAY_NAME_MAX,
       ),
-      clientEmail: truncateString(
-        user.email || profile?.email || "client@example.com",
-        VALIDATION_LIMITS.EMAIL_MAX,
-      ),
+      clientEmail: truncateString(user.email || "client@example.com", VALIDATION_LIMITS.EMAIL_MAX),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -826,10 +857,7 @@ function AccountPage() {
         displayName || user.displayName || "Valued Client",
         VALIDATION_LIMITS.DISPLAY_NAME_MAX,
       ),
-      clientEmail: truncateString(
-        user.email || profile?.email || "client@example.com",
-        VALIDATION_LIMITS.EMAIL_MAX,
-      ),
+      clientEmail: truncateString(user.email || "client@example.com", VALIDATION_LIMITS.EMAIL_MAX),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -851,7 +879,7 @@ function AccountPage() {
     purchase: CoursePurchaseRecord,
     nextStatus: "Verified" | "Rejected",
   ) => {
-    if (!user?.email || !isCourseAdminEmail(user.email)) return;
+    if (!user?.email || !isPrimaryAdminUser(user)) return;
     setVerifyingId(purchase.id);
     setBannerMessage(null);
     const note =
@@ -911,7 +939,7 @@ function AccountPage() {
 
   const handlePublishNotice = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.email || !isCourseAdminEmail(user.email)) return;
+    if (!user?.email || !isPrimaryAdminUser(user)) return;
     setNoticeSubmitting(true);
     setBannerMessage(null);
 
@@ -929,12 +957,14 @@ function AccountPage() {
       return;
     }
 
+    const safeActionRoute = isSafeAppRoute(noticeActionRoute) ? noticeActionRoute : "";
+
     const payload = {
       title: safeTitle,
       category: noticeCategory,
       body: safeBody,
       actionLabel: truncateString(noticeActionLabel, VALIDATION_LIMITS.NOTICE_ACTION_LABEL_MAX),
-      actionRoute: truncateString(noticeActionRoute, VALIDATION_LIMITS.NOTICE_ACTION_ROUTE_MAX),
+      actionRoute: truncateString(safeActionRoute, VALIDATION_LIMITS.NOTICE_ACTION_ROUTE_MAX),
       isPublished: noticeIsPublished,
       publishedDate: todayIsoDate(),
       publishedByEmail: truncateString(user.email, VALIDATION_LIMITS.EMAIL_MAX),
@@ -961,7 +991,7 @@ function AccountPage() {
   };
 
   const handleToggleNoticePublish = async (notice: WebsiteNoticeRecord) => {
-    if (!user?.email || !isCourseAdminEmail(user.email)) return;
+    if (!user?.email || !isPrimaryAdminUser(user)) return;
     const path = `notices/${notice.id}`;
     try {
       await updateDoc(doc(db, "notices", notice.id), {
@@ -979,7 +1009,7 @@ function AccountPage() {
   };
 
   const handleDeleteNotice = async (noticeId: string) => {
-    if (!user?.email || !isCourseAdminEmail(user.email)) return;
+    if (!user?.email || !isPrimaryAdminUser(user)) return;
     const path = `notices/${noticeId}`;
     try {
       await deleteDoc(doc(db, "notices", noticeId));
@@ -1334,7 +1364,7 @@ function AccountPage() {
               <div className="rounded-3xl border border-border/80 bg-background/60 p-5 shadow-sm backdrop-blur-2xl">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    Authenticated Account
+                    {isPrimaryAdmin ? "Primary Admin Account" : "Student & Client Account"}
                   </span>
                   <ShieldCheck className="h-4 w-4 text-foreground" />
                 </div>
@@ -1503,10 +1533,10 @@ function AccountPage() {
                         Read All Notices ({publishedNotices.length})
                         <ArrowUpRight className="h-3.5 w-3.5" />
                       </button>
-                      {publishedNotices[0]?.actionRoute && (
+                      {isSafeAppRoute(publishedNotices[0]?.actionRoute) && (
                         <Link
                           to={
-                            publishedNotices[0].actionRoute as
+                            publishedNotices[0]!.actionRoute as
                               | "/courses"
                               | "/graphic-design-course"
                               | "/workshop"
@@ -1515,7 +1545,7 @@ function AccountPage() {
                           }
                           className="inline-flex h-8 items-center gap-1 rounded-full bg-primary px-3.5 text-[11px] font-semibold text-primary-foreground"
                         >
-                          {publishedNotices[0].actionLabel || "Open"}
+                          {publishedNotices[0]!.actionLabel || "Open"}
                           <ArrowUpRight className="h-3 w-3" />
                         </Link>
                       )}
@@ -1569,7 +1599,7 @@ function AccountPage() {
                 Project Orders ({orders.length})
               </button>
 
-              {isCourseAdminEmail(user.email) && (
+              {isPrimaryAdmin && (
                 <button
                   type="button"
                   onClick={() => setDashboardSection("admin")}
@@ -1995,8 +2025,7 @@ function AccountPage() {
                             Loading website notices…
                           </p>
                         </div>
-                      ) : (isCourseAdminEmail(user.email) ? notices : publishedNotices).length ===
-                        0 ? (
+                      ) : (isPrimaryAdmin ? notices : publishedNotices).length === 0 ? (
                         <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-10 text-center">
                           <Megaphone className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
                           <h3 className="font-display text-lg font-bold">
@@ -2010,94 +2039,92 @@ function AccountPage() {
                         </div>
                       ) : (
                         <div className="space-y-4">
-                          {(isCourseAdminEmail(user.email) ? notices : publishedNotices).map(
-                            (notice) => (
-                              <div
-                                key={notice.id}
-                                className={`rounded-2xl border p-5 shadow-xs transition-all ${
-                                  notice.isPublished
-                                    ? "border-border/80 bg-background/85"
-                                    : "border-dashed border-amber-500/40 bg-amber-500/5"
-                                }`}
-                              >
-                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="rounded-full bg-primary px-3 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-primary-foreground">
-                                      {notice.category}
+                          {(isPrimaryAdmin ? notices : publishedNotices).map((notice) => (
+                            <div
+                              key={notice.id}
+                              className={`rounded-2xl border p-5 shadow-xs transition-all ${
+                                notice.isPublished
+                                  ? "border-border/80 bg-background/85"
+                                  : "border-dashed border-amber-500/40 bg-amber-500/5"
+                              }`}
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-full bg-primary px-3 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-primary-foreground">
+                                    {notice.category}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
+                                    <Calendar className="h-3.5 w-3.5" />
+                                    {notice.publishedDate}
+                                  </span>
+                                  {!notice.isPublished && (
+                                    <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-200">
+                                      Draft (Hidden)
                                     </span>
-                                    <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
-                                      <Calendar className="h-3.5 w-3.5" />
-                                      {notice.publishedDate}
-                                    </span>
-                                    {!notice.isPublished && (
-                                      <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-200">
-                                        Draft (Hidden)
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  {isCourseAdminEmail(user.email) && (
-                                    <div className="flex items-center gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleToggleNoticePublish(notice)}
-                                        className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full border border-border/80 bg-background px-3 font-mono text-[10px] font-bold uppercase tracking-wider text-foreground hover:bg-muted"
-                                      >
-                                        {notice.isPublished ? (
-                                          <>
-                                            <EyeOff className="h-3 w-3" /> Unpublish
-                                          </>
-                                        ) : (
-                                          <>
-                                            <Eye className="h-3 w-3" /> Publish
-                                          </>
-                                        )}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteNotice(notice.id)}
-                                        className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full border border-destructive/40 px-3 font-mono text-[10px] font-bold uppercase tracking-wider text-destructive hover:bg-destructive/10"
-                                      >
-                                        <Trash2 className="h-3 w-3" /> Delete
-                                      </button>
-                                    </div>
                                   )}
                                 </div>
 
-                                <h3 className="mt-3 font-display text-lg font-bold tracking-tight text-foreground">
-                                  {notice.title}
-                                </h3>
-                                <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-muted-foreground sm:text-sm">
-                                  {notice.body}
-                                </p>
-
-                                {notice.actionRoute && (
-                                  <div className="mt-4 pt-1">
-                                    <Link
-                                      to={
-                                        notice.actionRoute as
-                                          | "/courses"
-                                          | "/graphic-design-course"
-                                          | "/workshop"
-                                          | "/projects"
-                                          | "/contact"
-                                      }
-                                      className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-105"
+                                {isPrimaryAdmin && (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleNoticePublish(notice)}
+                                      className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full border border-border/80 bg-background px-3 font-mono text-[10px] font-bold uppercase tracking-wider text-foreground hover:bg-muted"
                                     >
-                                      {notice.actionLabel || "View Section"}
-                                      <ArrowUpRight className="h-3.5 w-3.5" />
-                                    </Link>
+                                      {notice.isPublished ? (
+                                        <>
+                                          <EyeOff className="h-3 w-3" /> Unpublish
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Eye className="h-3 w-3" /> Publish
+                                        </>
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteNotice(notice.id)}
+                                      className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full border border-destructive/40 px-3 font-mono text-[10px] font-bold uppercase tracking-wider text-destructive hover:bg-destructive/10"
+                                    >
+                                      <Trash2 className="h-3 w-3" /> Delete
+                                    </button>
                                   </div>
                                 )}
                               </div>
-                            ),
-                          )}
+
+                              <h3 className="mt-3 font-display text-lg font-bold tracking-tight text-foreground">
+                                {notice.title}
+                              </h3>
+                              <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                                {notice.body}
+                              </p>
+
+                              {isSafeAppRoute(notice.actionRoute) && (
+                                <div className="mt-4 pt-1">
+                                  <Link
+                                    to={
+                                      notice.actionRoute as
+                                        | "/courses"
+                                        | "/graphic-design-course"
+                                        | "/workshop"
+                                        | "/projects"
+                                        | "/contact"
+                                    }
+                                    className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-105"
+                                  >
+                                    {notice.actionLabel || "View Section"}
+                                    <ArrowUpRight className="h-3.5 w-3.5" />
+                                  </Link>
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
 
-                    {/* Admin Notice Publisher Form */}
-                    {isCourseAdminEmail(user.email) && (
+                    {/* Primary Admin Notice Publisher Form */}
+                    {isPrimaryAdmin && (
                       <form
                         onSubmit={handlePublishNotice}
                         className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8"
@@ -2235,7 +2262,7 @@ function AccountPage() {
                   </div>
                 )}
 
-                {dashboardSection === "admin" && isCourseAdminEmail(user.email) && (
+                {dashboardSection === "admin" && isPrimaryAdmin && (
                   <div className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8">
                     <div className="mb-6 border-b border-border/60 pb-5">
                       <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">

@@ -49,6 +49,51 @@ import { findMatchingRoutes, WEBSITE_KNOWLEDGE_PROMPT } from "./lib/assistant-kn
 const PRESENCE_TTL_MS = 45_000;
 const activeCourseVisitors = new Map<string, number>();
 
+const CHAT_RATE_WINDOW_MS = 60_000;
+const CHAT_RATE_MAX_REQUESTS = 25;
+const chatRateBuckets = new Map<string, number[]>();
+
+function getClientIp(request: Request): string {
+  const fwd = request.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]?.trim() || "unknown";
+  return request.headers.get("x-real-ip")?.trim() || "local";
+}
+
+function isChatRateLimited(ip: string, now: number): boolean {
+  const timestamps = (chatRateBuckets.get(ip) ?? []).filter((ts) => now - ts < CHAT_RATE_WINDOW_MS);
+  if (timestamps.length >= CHAT_RATE_MAX_REQUESTS) {
+    chatRateBuckets.set(ip, timestamps);
+    return true;
+  }
+  timestamps.push(now);
+  chatRateBuckets.set(ip, timestamps);
+  if (chatRateBuckets.size > 500) {
+    for (const [key, list] of chatRateBuckets.entries()) {
+      const fresh = list.filter((ts) => now - ts < CHAT_RATE_WINDOW_MS);
+      if (fresh.length === 0) chatRateBuckets.delete(key);
+    }
+  }
+  return false;
+}
+
+function withSecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  if (!headers.has("X-Content-Type-Options")) {
+    headers.set("X-Content-Type-Options", "nosniff");
+  }
+  if (!headers.has("Referrer-Policy")) {
+    headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  }
+  if (!headers.has("Permissions-Policy")) {
+    headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 function pruneInactiveVisitors(now: number) {
   for (const [sessionId, lastSeen] of activeCourseVisitors.entries()) {
     if (now - lastSeen > PRESENCE_TTL_MS) {
@@ -265,9 +310,42 @@ async function handleAssistantChatRequest(request: Request): Promise<Response> {
     });
   }
 
+  const now = Date.now();
+  if (isChatRateLimited(getClientIp(request), now)) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "নিরাপত্তার স্বার্থে সাময়িকভাবে অনুরোধ সীমা অতিক্রম হয়েছে। অনুগ্রহ করে ১ মিনিট পর আবার চেষ্টা করুন।",
+        errorCode: "RATE_LIMIT",
+      }),
+      {
+        status: 429,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "retry-after": "60",
+        },
+      },
+    );
+  }
+
+  const contentLength = Number(request.headers.get("content-length") || "0");
+  if (contentLength > 32_768) {
+    return new Response(JSON.stringify({ error: "Payload too large" }), {
+      status: 413,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
   let body: { messages?: unknown; currentPath?: unknown };
   try {
-    body = (await request.json()) as { messages?: unknown; currentPath?: unknown };
+    const rawText = await request.text();
+    if (rawText.length > 32_768) {
+      return new Response(JSON.stringify({ error: "Payload too large" }), {
+        status: 413,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+    body = JSON.parse(rawText) as { messages?: unknown; currentPath?: unknown };
   } catch {
     return new Response(JSON.stringify({ error: "Invalid JSON payload" }), {
       status: 400,
@@ -417,21 +495,23 @@ export default {
     try {
       const url = new URL(request.url);
       if (url.pathname === "/api/course-presence") {
-        return await handleCoursePresenceRequest(request);
+        return withSecurityHeaders(await handleCoursePresenceRequest(request));
       }
       if (url.pathname === "/api/assistant-chat") {
-        return await handleAssistantChatRequest(request);
+        return withSecurityHeaders(await handleAssistantChatRequest(request));
       }
 
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      return withSecurityHeaders(await normalizeCatastrophicSsrResponse(response));
     } catch (error) {
       console.error(error);
-      return new Response(renderErrorPage(), {
-        status: 500,
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
+      return withSecurityHeaders(
+        new Response(renderErrorPage(), {
+          status: 500,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        }),
+      );
     }
   },
 };

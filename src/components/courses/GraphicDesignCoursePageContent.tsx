@@ -46,7 +46,7 @@ import {
   type CoursePurchaseRecord,
   db,
   handleFirestoreError,
-  isCourseAdminEmail,
+  isPrimaryAdminUser,
   OperationType,
   signInWithGoogle,
   VALIDATION_LIMITS,
@@ -863,7 +863,7 @@ export function GraphicDesignCoursePageContent() {
                     to="/account"
                     className="inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-primary px-6 text-xs font-semibold text-primary-foreground shadow-sm"
                   >
-                    {isCourseAdminEmail(user.email)
+                    {isPrimaryAdminUser(user)
                       ? "Admin Verification Queue খুলুন"
                       : "প্রোফাইল Purchases দেখুন"}
                     <ArrowUpRight className="h-4 w-4" />
