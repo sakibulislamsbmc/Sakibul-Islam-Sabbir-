@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
   collection,
+  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
@@ -26,6 +27,8 @@ import {
   Clock,
   CreditCard,
   Download,
+  Eye,
+  EyeOff,
   FileSpreadsheet,
   FileText,
   Globe2,
@@ -34,14 +37,18 @@ import {
   LogOut,
   Mail,
   MapPin,
+  Megaphone,
   Menu,
   Phone,
+  PlayCircle,
   Plus,
   Receipt,
   Save,
   Search,
+  Send,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Unlock,
   User as UserIcon,
   Wallet,
@@ -63,6 +70,8 @@ import {
   handleFirestoreError,
   isCourseAdminEmail,
   logOutUser,
+  NOTICE_CATEGORIES,
+  type NoticeCategory,
   OperationType,
   PACKAGE_TIERS,
   type PackageTier,
@@ -75,6 +84,7 @@ import {
   truncateString,
   type UserProfileRecord,
   VALIDATION_LIMITS,
+  type WebsiteNoticeRecord,
 } from "@/lib/firebase";
 
 export const Route = createFileRoute("/account")({
@@ -132,10 +142,27 @@ function downloadTextFile(
   URL.revokeObjectURL(url);
 }
 
+const LEGACY_USD_TO_BDT_RATE = 120;
+
+function getOrderAmountBdt(order: ProjectOrderRecord): number {
+  if (typeof order.amountBdt === "number" && order.amountBdt > 0) {
+    return Math.round(order.amountBdt);
+  }
+  return Math.round((Number(order.amountUsd) || 0) * LEGACY_USD_TO_BDT_RATE);
+}
+
+function getOrderCompletedDate(order: ProjectOrderRecord): string | null {
+  if (order.projectStatus !== "Completed") return null;
+  return order.completedDate || order.orderDate || null;
+}
+
 function buildOrderReceiptText(
   order: ProjectOrderRecord,
   profile: UserProfileRecord | null,
 ): string {
+  const amountBdt = getOrderAmountBdt(order);
+  const completedDate = getOrderCompletedDate(order);
+
   return [
     "================================================================",
     "         SAKIBUL ISLAM SABBIR — OFFICIAL ORDER RECEIPT          ",
@@ -144,6 +171,7 @@ function buildOrderReceiptText(
     "",
     `ORDER NUMBER      : ${order.orderNumber}`,
     `ORDER DATE        : ${order.orderDate}`,
+    ...(completedDate ? [`COMPLETED DATE    : ${completedDate}`] : []),
     `PROJECT STATUS    : ${order.projectStatus}`,
     `EST. DELIVERY     : ${order.deliveryEstimate}`,
     "",
@@ -165,12 +193,13 @@ function buildOrderReceiptText(
     `Project Scope     : ${order.projectNotes || "Standard package deliverables."}`,
     "",
     "----------------------------------------------------------------",
-    "BILLING & PAYMENT SUMMARY",
+    "BILLING & PAYMENT SUMMARY (BDT)",
     "----------------------------------------------------------------",
     `Billing Method    : ${order.billingMethod}`,
     `Billing Reference : ${order.billingReference}`,
     `Payment Status    : ${order.billingStatus}`,
-    `Total Amount (USD): $${order.amountUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+    ...(completedDate ? [`Completed Date    : ${completedDate}`] : []),
+    `Total Amount (BDT): ৳${amountBdt.toLocaleString("en-US")} BDT`,
     "",
     "================================================================",
     "Thank you for collaborating with Sakibul Islam Sabbir.",
@@ -183,6 +212,9 @@ function buildOrderInvoiceHtml(
   order: ProjectOrderRecord,
   profile: UserProfileRecord | null,
 ): string {
+  const amountBdt = getOrderAmountBdt(order);
+  const completedDate = getOrderCompletedDate(order);
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -194,13 +226,14 @@ function buildOrderInvoiceHtml(
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid #e2e8f0; padding-bottom: 24px; margin-bottom: 28px; }
     .brand { font-size: 24px; font-weight: 800; letter-spacing: -0.03em; }
     .badge { display: inline-block; background: #0f172a; color: #ffffff; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; padding: 6px 12px; border-radius: 999px; }
+    .completed-line { font-size: 12px; font-weight: 700; color: #047857; margin-top: 6px; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 28px; }
     .label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: #64748b; margin-bottom: 6px; }
     .val { font-size: 14px; font-weight: 600; color: #0f172a; margin: 2px 0; }
     table { width: 100%; border-collapse: collapse; margin: 24px 0; }
     th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding: 12px 8px; }
     td { padding: 16px 8px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
-    .total-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; margin-top: 20px; display: flex; justify-content: space-between; align-items: center; }
+    .total-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; margin-top: 20px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
     .total-amount { font-size: 26px; font-weight: 800; }
     .footer { margin-top: 32px; font-size: 12px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 20px; }
   </style>
@@ -214,6 +247,7 @@ function buildOrderInvoiceHtml(
       </div>
       <div style="text-align: right;">
         <span class="badge">${order.billingStatus}</span>
+        ${completedDate ? `<div class="completed-line">Completed Date: ${completedDate}</div>` : ""}
         <div style="font-size: 18px; font-weight: 800; margin-top: 8px;">${order.orderNumber}</div>
         <div style="font-size: 12px; color: #64748b;">Order Date: ${order.orderDate}</div>
       </div>
@@ -223,13 +257,14 @@ function buildOrderInvoiceHtml(
         <div class="label">Billed To</div>
         <div class="val">${order.clientName}</div>
         <div style="font-size: 13px; color: #475569;">${order.clientEmail}</div>
-        <div style="font-size: 13px; color: #475569;">${profile?.company || "Direct Client"} • ${profile?.location || "Global"}</div>
+        <div style="font-size: 13px; color: #475569;">${profile?.company || "Direct Client"} • ${profile?.location || "Bangladesh"}</div>
       </div>
       <div>
         <div class="label">Billing &amp; Delivery Details</div>
         <div class="val">Method: ${order.billingMethod}</div>
         <div style="font-size: 13px; color: #475569;">Reference: ${order.billingReference}</div>
         <div style="font-size: 13px; color: #475569;">Project Status: ${order.projectStatus} (${order.deliveryEstimate})</div>
+        ${completedDate ? `<div style="font-size: 13px; font-weight: 600; color: #047857; margin-top: 3px;">Completed Date: ${completedDate}</div>` : ""}
       </div>
     </div>
     <table>
@@ -238,7 +273,7 @@ function buildOrderInvoiceHtml(
           <th>Project &amp; Scope</th>
           <th>Category</th>
           <th>Package Tier</th>
-          <th style="text-align: right;">Amount (USD)</th>
+          <th style="text-align: right;">Amount (BDT)</th>
         </tr>
       </thead>
       <tbody>
@@ -249,7 +284,7 @@ function buildOrderInvoiceHtml(
           </td>
           <td>${order.serviceCategory}</td>
           <td>${order.packageTier}</td>
-          <td style="text-align: right; font-weight: 700;">$${order.amountUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          <td style="text-align: right; font-weight: 700;">৳${amountBdt.toLocaleString("en-US")} BDT</td>
         </tr>
       </tbody>
     </table>
@@ -257,14 +292,15 @@ function buildOrderInvoiceHtml(
       <div>
         <div class="label">Payment Method &amp; Verification</div>
         <div class="val">${order.billingMethod} (${order.billingReference}) — ${order.billingStatus}</div>
+        ${completedDate ? `<div class="completed-line">Completed Date: ${completedDate}</div>` : ""}
       </div>
       <div style="text-align: right;">
-        <div class="label">Total Billed</div>
-        <div class="total-amount">$${order.amountUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD</div>
+        <div class="label">Total Billed (BDT)</div>
+        <div class="total-amount">৳${amountBdt.toLocaleString("en-US")} BDT</div>
       </div>
     </div>
     <div class="footer">
-      Official Project Order Copy • Sakibul Islam Sabbir (sakibulislam.rc@gmail.com • +880 1410 957 506)
+      Official Project Order Copy (Bangladeshi Taka • BDT) • Sakibul Islam Sabbir (sakibulislam.rc@gmail.com • +880 1410 957 506)
     </div>
   </div>
 </body>
@@ -301,18 +337,29 @@ function AccountPage() {
   const [adminQueuePurchases, setAdminQueuePurchases] = useState<CoursePurchaseRecord[]>([]);
   const [adminNoteDrafts, setAdminNoteDrafts] = useState<Record<string, string>>({});
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
-  const [dashboardSection, setDashboardSection] = useState<"purchases" | "orders" | "admin">(
-    "purchases",
-  );
+  const [dashboardSection, setDashboardSection] = useState<
+    "purchases" | "notices" | "orders" | "admin"
+  >("purchases");
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("All");
 
-  // New Order Form state
+  // Website Notices state
+  const [notices, setNotices] = useState<WebsiteNoticeRecord[]>([]);
+  const [noticesLoading, setNoticesLoading] = useState(false);
+  const [noticeSubmitting, setNoticeSubmitting] = useState(false);
+  const [noticeTitle, setNoticeTitle] = useState("");
+  const [noticeCategory, setNoticeCategory] = useState<NoticeCategory>("General");
+  const [noticeBody, setNoticeBody] = useState("");
+  const [noticeActionLabel, setNoticeActionLabel] = useState("");
+  const [noticeActionRoute, setNoticeActionRoute] = useState("/courses");
+  const [noticeIsPublished, setNoticeIsPublished] = useState(true);
+
+  // New Order Form state (Bangladeshi Taka - BDT)
   const [newProjectTitle, setNewProjectTitle] = useState("");
   const [newServiceCategory, setNewServiceCategory] = useState<ServiceCategory>("Web Development");
   const [newPackageTier, setNewPackageTier] = useState<PackageTier>("Professional");
-  const [newAmountUsd, setNewAmountUsd] = useState("450");
+  const [newAmountBdt, setNewAmountBdt] = useState("15000");
   const [newBillingMethod, setNewBillingMethod] = useState<BillingMethod>("bKash");
   const [newBillingReference, setNewBillingReference] = useState("");
   const [newBillingStatus, setNewBillingStatus] = useState<BillingStatus>("Paid");
@@ -547,6 +594,40 @@ function AccountPage() {
     };
   }, [authReady, user]);
 
+  // Subscribe to published Website Notices (or all notices for verified admins)
+  useEffect(() => {
+    if (!authReady || !user) {
+      setNotices([]);
+      return;
+    }
+
+    setNoticesLoading(true);
+    const noticesPath = "notices";
+    const isAdmin = isCourseAdminEmail(user.email);
+    const noticesQuery = isAdmin
+      ? query(collection(db, "notices"))
+      : query(collection(db, "notices"), where("isPublished", "==", true));
+
+    const unsubscribe = onSnapshot(
+      noticesQuery,
+      (snapshot) => {
+        const list: WebsiteNoticeRecord[] = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<WebsiteNoticeRecord, "id">),
+        }));
+        list.sort((a, b) => b.publishedDate.localeCompare(a.publishedDate));
+        setNotices(list);
+        setNoticesLoading(false);
+      },
+      (error) => {
+        setNoticesLoading(false);
+        handleFirestoreError(error, OperationType.LIST, noticesPath);
+      },
+    );
+
+    return () => unsubscribe();
+  }, [authReady, user]);
+
   const handleGoogleSignIn = async () => {
     setAuthLoading(true);
     setBannerMessage(null);
@@ -651,9 +732,13 @@ function AccountPage() {
 
     const orderId = `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const path = `orders/${orderId}`;
-    const parsedAmount = Math.min(
+    const parsedAmountBdt = Math.min(
+      VALIDATION_LIMITS.AMOUNT_BDT_MAX,
+      Math.max(100, Math.round(Number(newAmountBdt) || 15000)),
+    );
+    const equivalentUsd = Math.min(
       VALIDATION_LIMITS.AMOUNT_MAX,
-      Math.max(1, Number(newAmountUsd) || 250),
+      Math.max(1, Number((parsedAmountBdt / LEGACY_USD_TO_BDT_RATE).toFixed(2))),
     );
 
     const payload = {
@@ -665,7 +750,8 @@ function AccountPage() {
       ),
       serviceCategory: newServiceCategory,
       packageTier: newPackageTier,
-      amountUsd: parsedAmount,
+      amountUsd: equivalentUsd,
+      amountBdt: parsedAmountBdt,
       billingMethod: newBillingMethod,
       billingReference: truncateString(
         newBillingReference || billingDetails || `${newBillingMethod} Verified Account`,
@@ -674,6 +760,7 @@ function AccountPage() {
       billingStatus: newBillingStatus,
       projectStatus: "In Progress" as ProjectStatus,
       orderDate: truncateString(newOrderDate || todayIsoDate(), VALIDATION_LIMITS.ORDER_DATE_MAX),
+      completedDate: "",
       deliveryEstimate: truncateString(
         newDeliveryEstimate || "14 Days",
         VALIDATION_LIMITS.DELIVERY_ESTIMATE_MAX,
@@ -698,7 +785,7 @@ function AccountPage() {
       setShowNewOrderModal(false);
       setBannerMessage({
         type: "success",
-        text: `Order ${payload.orderNumber} placed! You can now view billing details or download your receipt below.`,
+        text: `Order ${payload.orderNumber} (৳${parsedAmountBdt.toLocaleString("en-US")} BDT) placed! You can view billing details or download your BDT invoice below.`,
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -714,13 +801,15 @@ function AccountPage() {
 
     const orderId = `ord_sample_${Date.now()}`;
     const path = `orders/${orderId}`;
+    const sampleBdt = 50000;
     const payload = {
       uid: truncateString(user.uid, 128),
       orderNumber: generateOrderNumber(),
       projectTitle: "Full-Stack Brand Website & High-Retention Video Reel Suite",
       serviceCategory: "Web Development" as ServiceCategory,
       packageTier: "Enterprise" as PackageTier,
-      amountUsd: 1250,
+      amountUsd: Math.round(sampleBdt / LEGACY_USD_TO_BDT_RATE),
+      amountBdt: sampleBdt,
       billingMethod: preferredBillingMethod || ("Dutch-Bangla Bank" as BillingMethod),
       billingReference: truncateString(
         billingDetails || "DBBL Agent Banking •••• 9506",
@@ -729,6 +818,7 @@ function AccountPage() {
       billingStatus: "Paid" as BillingStatus,
       projectStatus: "In Progress" as ProjectStatus,
       orderDate: todayIsoDate(),
+      completedDate: "",
       deliveryEstimate: "14 Business Days",
       projectNotes:
         "Complete responsive glassmorphic web platform, brand visual system, and 4 vertical short-form promotional video edits.",
@@ -748,7 +838,7 @@ function AccountPage() {
       await setDoc(doc(db, "orders", orderId), payload);
       setBannerMessage({
         type: "success",
-        text: `Sample project order (${payload.orderNumber}) added to your account.`,
+        text: `Sample project order (${payload.orderNumber} • ৳${sampleBdt.toLocaleString("en-US")} BDT) added to your account.`,
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, path);
@@ -799,18 +889,106 @@ function AccountPage() {
     if (!user) return;
     if (order.projectStatus === "Completed" || order.projectStatus === "Cancelled") return;
     const path = `orders/${order.id}`;
+    const completedDateValue = nextStatus === "Completed" ? todayIsoDate() : "";
     try {
       await updateDoc(doc(db, "orders", order.id), {
         projectStatus: nextStatus,
         billingStatus: nextBillingStatus || order.billingStatus,
+        completedDate: completedDateValue,
         updatedAt: serverTimestamp(),
       });
       setBannerMessage({
         type: "success",
-        text: `Order ${order.orderNumber} updated to "${nextStatus}".`,
+        text:
+          nextStatus === "Completed"
+            ? `Order ${order.orderNumber} marked Completed (${completedDateValue}) & Paid.`
+            : `Order ${order.orderNumber} updated to "${nextStatus}".`,
       });
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  };
+
+  const handlePublishNotice = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.email || !isCourseAdminEmail(user.email)) return;
+    setNoticeSubmitting(true);
+    setBannerMessage(null);
+
+    const noticeId = `notice_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const path = `notices/${noticeId}`;
+    const safeTitle = truncateString(noticeTitle, VALIDATION_LIMITS.NOTICE_TITLE_MAX);
+    const safeBody = truncateString(noticeBody, VALIDATION_LIMITS.NOTICE_BODY_MAX);
+
+    if (safeTitle.length < 2 || safeBody.length < 4) {
+      setNoticeSubmitting(false);
+      setBannerMessage({
+        type: "error",
+        text: "Please enter both a notice headline and message body.",
+      });
+      return;
+    }
+
+    const payload = {
+      title: safeTitle,
+      category: noticeCategory,
+      body: safeBody,
+      actionLabel: truncateString(noticeActionLabel, VALIDATION_LIMITS.NOTICE_ACTION_LABEL_MAX),
+      actionRoute: truncateString(noticeActionRoute, VALIDATION_LIMITS.NOTICE_ACTION_ROUTE_MAX),
+      isPublished: noticeIsPublished,
+      publishedDate: todayIsoDate(),
+      publishedByEmail: truncateString(user.email, VALIDATION_LIMITS.EMAIL_MAX),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    try {
+      await setDoc(doc(db, "notices", noticeId), payload);
+      setNoticeTitle("");
+      setNoticeBody("");
+      setNoticeActionLabel("");
+      setBannerMessage({
+        type: "success",
+        text: noticeIsPublished
+          ? "Notice published! Signed-in users can now read it inside the Account Dashboard."
+          : "Notice saved as draft.",
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+    } finally {
+      setNoticeSubmitting(false);
+    }
+  };
+
+  const handleToggleNoticePublish = async (notice: WebsiteNoticeRecord) => {
+    if (!user?.email || !isCourseAdminEmail(user.email)) return;
+    const path = `notices/${notice.id}`;
+    try {
+      await updateDoc(doc(db, "notices", notice.id), {
+        isPublished: !notice.isPublished,
+        publishedDate: todayIsoDate(),
+        updatedAt: serverTimestamp(),
+      });
+      setBannerMessage({
+        type: "success",
+        text: !notice.isPublished ? "Notice is now live in dashboard." : "Notice moved to draft.",
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  };
+
+  const handleDeleteNotice = async (noticeId: string) => {
+    if (!user?.email || !isCourseAdminEmail(user.email)) return;
+    const path = `notices/${noticeId}`;
+    try {
+      await deleteDoc(doc(db, "notices", noticeId));
+      setBannerMessage({
+        type: "success",
+        text: "Notice removed.",
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, path);
     }
   };
 
@@ -819,10 +997,11 @@ function AccountPage() {
     const headers = [
       "Order Number",
       "Order Date",
+      "Completed Date",
       "Project Title",
       "Service Category",
       "Package Tier",
-      "Amount (USD)",
+      "Amount (BDT)",
       "Billing Method",
       "Billing Reference",
       "Billing Status",
@@ -835,10 +1014,11 @@ function AccountPage() {
       [
         o.orderNumber,
         o.orderDate,
+        getOrderCompletedDate(o) || "",
         `"${o.projectTitle.replace(/"/g, '""')}"`,
         o.serviceCategory,
         o.packageTier,
-        o.amountUsd,
+        getOrderAmountBdt(o),
         o.billingMethod,
         `"${o.billingReference.replace(/"/g, '""')}"`,
         o.billingStatus,
@@ -860,13 +1040,15 @@ function AccountPage() {
     return orders.filter((o) => o.projectStatus === statusFilter);
   }, [orders, statusFilter]);
 
-  const totalSpentUsd = useMemo(
+  const totalSpentBdt = useMemo(
     () =>
       orders
         .filter((o) => o.projectStatus !== "Cancelled")
-        .reduce((sum, o) => sum + (Number(o.amountUsd) || 0), 0),
+        .reduce((sum, o) => sum + getOrderAmountBdt(o), 0),
     [orders],
   );
+
+  const publishedNotices = useMemo(() => notices.filter((n) => n.isPublished), [notices]);
 
   return (
     <div className="relative flex min-h-screen flex-col bg-background font-sans text-foreground antialiased selection:bg-primary selection:text-primary-foreground">
@@ -911,10 +1093,22 @@ function AccountPage() {
               </span>
             </a>
             <button
-              aria-label="Notifications"
-              className="rounded-full p-2 text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
+              type="button"
+              aria-label="Website Notices"
+              onClick={() => {
+                setDashboardSection("notices");
+                document
+                  .getElementById("dashboard-sections")
+                  ?.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="relative cursor-pointer rounded-full p-2 text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
             >
               <Bell className="h-4 w-4" />
+              {publishedNotices.length > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-[9px] font-bold text-primary-foreground">
+                  {publishedNotices.length}
+                </span>
+              )}
             </button>
             <a
               href="/account"
@@ -1136,7 +1330,7 @@ function AccountPage() {
           /* Signed-In Dashboard */
           <div className="space-y-10">
             {/* Top Summary Metrics Row */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <div className="rounded-3xl border border-border/80 bg-background/60 p-5 shadow-sm backdrop-blur-2xl">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -1151,7 +1345,7 @@ function AccountPage() {
               <button
                 type="button"
                 onClick={() => setDashboardSection("purchases")}
-                className={`rounded-3xl border p-5 text-left shadow-sm backdrop-blur-2xl transition-colors ${
+                className={`cursor-pointer rounded-3xl border p-5 text-left shadow-sm backdrop-blur-2xl transition-colors ${
                   dashboardSection === "purchases"
                     ? "border-primary bg-background/85 ring-1 ring-primary/20"
                     : "border-border/80 bg-background/60 hover:border-foreground/30"
@@ -1175,8 +1369,31 @@ function AccountPage() {
 
               <button
                 type="button"
+                onClick={() => setDashboardSection("notices")}
+                className={`cursor-pointer rounded-3xl border p-5 text-left shadow-sm backdrop-blur-2xl transition-colors ${
+                  dashboardSection === "notices"
+                    ? "border-primary bg-background/85 ring-1 ring-primary/20"
+                    : "border-border/80 bg-background/60 hover:border-foreground/30"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Website Notices
+                  </span>
+                  <Megaphone className="h-4 w-4 text-foreground" />
+                </div>
+                <p className="mt-2 font-display text-2xl font-bold tabular-nums">
+                  {publishedNotices.length}
+                </p>
+                <p className="truncate font-mono text-[11px] text-muted-foreground">
+                  {publishedNotices[0]?.title || "No active notices"}
+                </p>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setDashboardSection("orders")}
-                className={`rounded-3xl border p-5 text-left shadow-sm backdrop-blur-2xl transition-colors ${
+                className={`cursor-pointer rounded-3xl border p-5 text-left shadow-sm backdrop-blur-2xl transition-colors ${
                   dashboardSection === "orders"
                     ? "border-primary bg-background/85 ring-1 ring-primary/20"
                     : "border-border/80 bg-background/60 hover:border-foreground/30"
@@ -1198,34 +1415,121 @@ function AccountPage() {
               <div className="rounded-3xl border border-border/80 bg-background/60 p-5 shadow-sm backdrop-blur-2xl">
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    Preferred Billing
-                  </span>
-                  <Wallet className="h-4 w-4 text-foreground" />
-                </div>
-                <p className="mt-2 font-display text-lg font-bold">{preferredBillingMethod}</p>
-                <p className="truncate font-mono text-[11px] text-muted-foreground">
-                  {billingDetails || "No reference saved"}
-                </p>
-              </div>
-
-              <div className="rounded-3xl border border-border/80 bg-background/60 p-5 shadow-sm backdrop-blur-2xl">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                    Total Order Volume
+                    Total Order Volume (BDT)
                   </span>
                   <Receipt className="h-4 w-4 text-foreground" />
                 </div>
                 <p className="mt-2 font-display text-2xl font-bold tabular-nums">
-                  ${totalSpentUsd.toLocaleString("en-US")}
+                  ৳{totalSpentBdt.toLocaleString("en-US")}
+                  <span className="ml-1 text-xs font-semibold text-muted-foreground">BDT</span>
                 </p>
                 <p className="font-mono text-[11px] text-muted-foreground">
-                  Downloadable receipts available
+                  {preferredBillingMethod} • BDT invoices ready
                 </p>
               </div>
             </div>
 
+            {/* Quick Highlight: Purchased Courses Direct Jump + Latest Website Notice */}
+            {(coursePurchases.length > 0 || publishedNotices.length > 0) && (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                {coursePurchases.length > 0 && (
+                  <div
+                    className={`rounded-3xl border border-border/80 bg-background/65 p-5 shadow-sm backdrop-blur-2xl ${
+                      publishedNotices.length > 0 ? "lg:col-span-7" : "lg:col-span-12"
+                    }`}
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                        <PlayCircle className="h-3.5 w-3.5 text-foreground" />
+                        Your Purchased Courses — Click to Open
+                      </span>
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        সরাসরি কোর্স সেকশনে যান
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                      {coursePurchases.map((course) => (
+                        <Link
+                          key={course.id}
+                          to={course.courseRoute as "/graphic-design-course" | "/courses"}
+                          className="group flex items-center justify-between gap-3 rounded-2xl border border-border/80 bg-background/90 px-4 py-3 transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-sm"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-display text-sm font-bold text-foreground group-hover:underline">
+                              {course.courseTitle}
+                            </p>
+                            <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                              {course.paymentStatus} • {course.progressPct}% Complete
+                            </p>
+                          </div>
+                          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-transform group-hover:scale-105">
+                            <ArrowUpRight className="h-4 w-4" />
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {publishedNotices.length > 0 && (
+                  <div
+                    className={`flex flex-col justify-between rounded-3xl border border-border/80 bg-background/65 p-5 shadow-sm backdrop-blur-2xl ${
+                      coursePurchases.length > 0 ? "lg:col-span-5" : "lg:col-span-12"
+                    }`}
+                  >
+                    <div>
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
+                          <Bell className="h-3.5 w-3.5" />
+                          Latest Website Notice
+                        </span>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          {publishedNotices[0]?.publishedDate}
+                        </span>
+                      </div>
+                      <p className="font-display text-base font-bold text-foreground">
+                        {publishedNotices[0]?.title}
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                        {publishedNotices[0]?.body}
+                      </p>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setDashboardSection("notices")}
+                        className="inline-flex cursor-pointer items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-wider text-foreground underline-offset-4 hover:underline"
+                      >
+                        Read All Notices ({publishedNotices.length})
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </button>
+                      {publishedNotices[0]?.actionRoute && (
+                        <Link
+                          to={
+                            publishedNotices[0].actionRoute as
+                              | "/courses"
+                              | "/graphic-design-course"
+                              | "/workshop"
+                              | "/projects"
+                              | "/contact"
+                          }
+                          className="inline-flex h-8 items-center gap-1 rounded-full bg-primary px-3.5 text-[11px] font-semibold text-primary-foreground"
+                        >
+                          {publishedNotices[0].actionLabel || "Open"}
+                          <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Section Switcher Bar */}
-            <div className="flex flex-wrap items-center gap-2 border-b border-border/60 pb-4">
+            <div
+              id="dashboard-sections"
+              className="flex flex-wrap items-center gap-2 border-b border-border/60 pb-4 scroll-mt-24"
+            >
               <button
                 type="button"
                 onClick={() => setDashboardSection("purchases")}
@@ -1237,6 +1541,19 @@ function AccountPage() {
               >
                 <BookOpen className="h-3.5 w-3.5" />
                 Purchases &amp; Courses ({coursePurchases.length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDashboardSection("notices")}
+                className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-5 text-xs font-semibold transition-colors ${
+                  dashboardSection === "notices"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "border border-border/80 bg-background/70 text-foreground hover:bg-muted"
+                }`}
+              >
+                <Megaphone className="h-3.5 w-3.5" />
+                Notices ({publishedNotices.length})
               </button>
 
               <button
@@ -1522,9 +1839,10 @@ function AccountPage() {
                           const isVerified = item.paymentStatus === "Verified";
                           const isPending = item.paymentStatus === "Pending Verification";
                           return (
-                            <div
+                            <Link
                               key={item.id}
-                              className="rounded-2xl border border-border/80 bg-background/80 p-5 shadow-sm transition-all hover:border-foreground/30 sm:p-6"
+                              to={item.courseRoute as "/graphic-design-course" | "/courses"}
+                              className="group block cursor-pointer rounded-2xl border border-border/80 bg-background/80 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-md sm:p-6"
                             >
                               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
                                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -1559,7 +1877,7 @@ function AccountPage() {
 
                               <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                                 <div>
-                                  <h3 className="font-display text-lg font-bold tracking-tight text-foreground sm:text-xl">
+                                  <h3 className="font-display text-lg font-bold tracking-tight text-foreground transition-colors group-hover:underline sm:text-xl">
                                     {item.courseTitle}
                                   </h3>
                                   <p className="mt-1 text-xs text-muted-foreground">
@@ -1579,11 +1897,11 @@ function AccountPage() {
 
                                 <div className="shrink-0 rounded-2xl border border-border/70 bg-muted/30 px-4 py-2.5 text-left sm:text-right">
                                   <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                                    Course Fee
+                                    Course Fee (BDT)
                                   </p>
                                   <p className="font-display text-xl font-bold tabular-nums text-foreground">
                                     {item.amountBdt > 0
-                                      ? `৳${item.amountBdt.toLocaleString("en-US")}`
+                                      ? `৳${item.amountBdt.toLocaleString("en-US")} BDT`
                                       : "Free"}
                                   </p>
                                 </div>
@@ -1627,24 +1945,292 @@ function AccountPage() {
                               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-1">
                                 <span className="text-xs text-muted-foreground">
                                   {isVerified
-                                    ? "Access active — continue your sequential lessons."
+                                    ? "Access active — click card to enter course classroom."
                                     : isPending
-                                      ? "Classroom locked until admin confirms your TrxID."
-                                      : "Payment verification rejected — resubmit on the course page."}
+                                      ? "Classroom locked until admin confirms your TrxID (click to view course)."
+                                      : "Payment rejected — click to resubmit TrxID on the course page."}
                                 </span>
 
-                                <Link
-                                  to={item.courseRoute as "/graphic-design-course" | "/courses"}
-                                  className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm"
-                                >
-                                  {isVerified ? "Open Course Classroom" : "View Course Status"}
+                                <span className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-transform group-hover:scale-105">
+                                  {isVerified ? "Open Course Section" : "Go to Course"}
                                   <ArrowUpRight className="h-3.5 w-3.5" />
-                                </Link>
+                                </span>
                               </div>
-                            </div>
+                            </Link>
                           );
                         })}
                       </div>
+                    )}
+                  </div>
+                )}
+
+                {dashboardSection === "notices" && (
+                  <div className="space-y-6">
+                    <div className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8">
+                      <div className="mb-6 flex flex-col justify-between gap-4 border-b border-border/60 pb-5 sm:flex-row sm:items-center">
+                        <div>
+                          <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                            Website Notice Board • নোটিশ বোর্ড
+                          </span>
+                          <h2 className="mt-1 font-display text-2xl font-bold tracking-tight">
+                            Published Website Notices
+                          </h2>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Official announcements, live batch schedules, workshop updates, and
+                            account notices published from the website.
+                          </p>
+                        </div>
+
+                        <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-border/80 bg-muted/40 px-3.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
+                          <Bell className="h-3.5 w-3.5" />
+                          {publishedNotices.length} Active Notice
+                          {publishedNotices.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+
+                      {noticesLoading ? (
+                        <div className="flex flex-col items-center justify-center py-14 text-center">
+                          <Loader2 className="mb-3 h-6 w-6 animate-spin text-muted-foreground" />
+                          <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                            Loading website notices…
+                          </p>
+                        </div>
+                      ) : (isCourseAdminEmail(user.email) ? notices : publishedNotices).length ===
+                        0 ? (
+                        <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-10 text-center">
+                          <Megaphone className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                          <h3 className="font-display text-lg font-bold">
+                            No website notices published yet
+                          </h3>
+                          <p className="mx-auto mt-1.5 max-w-md text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
+                            Whenever any notice is published from the website (course schedule
+                            updates, workshop links, or special offers), it will appear right here
+                            inside your account dashboard.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {(isCourseAdminEmail(user.email) ? notices : publishedNotices).map(
+                            (notice) => (
+                              <div
+                                key={notice.id}
+                                className={`rounded-2xl border p-5 shadow-xs transition-all ${
+                                  notice.isPublished
+                                    ? "border-border/80 bg-background/85"
+                                    : "border-dashed border-amber-500/40 bg-amber-500/5"
+                                }`}
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="rounded-full bg-primary px-3 py-0.5 font-mono text-[10px] font-bold uppercase tracking-widest text-primary-foreground">
+                                      {notice.category}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
+                                      <Calendar className="h-3.5 w-3.5" />
+                                      {notice.publishedDate}
+                                    </span>
+                                    {!notice.isPublished && (
+                                      <span className="rounded-full bg-amber-500/20 px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-200">
+                                        Draft (Hidden)
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {isCourseAdminEmail(user.email) && (
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleNoticePublish(notice)}
+                                        className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full border border-border/80 bg-background px-3 font-mono text-[10px] font-bold uppercase tracking-wider text-foreground hover:bg-muted"
+                                      >
+                                        {notice.isPublished ? (
+                                          <>
+                                            <EyeOff className="h-3 w-3" /> Unpublish
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Eye className="h-3 w-3" /> Publish
+                                          </>
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteNotice(notice.id)}
+                                        className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full border border-destructive/40 px-3 font-mono text-[10px] font-bold uppercase tracking-wider text-destructive hover:bg-destructive/10"
+                                      >
+                                        <Trash2 className="h-3 w-3" /> Delete
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <h3 className="mt-3 font-display text-lg font-bold tracking-tight text-foreground">
+                                  {notice.title}
+                                </h3>
+                                <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                                  {notice.body}
+                                </p>
+
+                                {notice.actionRoute && (
+                                  <div className="mt-4 pt-1">
+                                    <Link
+                                      to={
+                                        notice.actionRoute as
+                                          | "/courses"
+                                          | "/graphic-design-course"
+                                          | "/workshop"
+                                          | "/projects"
+                                          | "/contact"
+                                      }
+                                      className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-105"
+                                    >
+                                      {notice.actionLabel || "View Section"}
+                                      <ArrowUpRight className="h-3.5 w-3.5" />
+                                    </Link>
+                                  </div>
+                                )}
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Admin Notice Publisher Form */}
+                    {isCourseAdminEmail(user.email) && (
+                      <form
+                        onSubmit={handlePublishNotice}
+                        className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8"
+                      >
+                        <div className="mb-5 border-b border-border/60 pb-4">
+                          <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                            Admin Notice Publisher
+                          </span>
+                          <h3 className="mt-1 font-display text-xl font-bold tracking-tight">
+                            Publish a New Website Notice
+                          </h3>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Notices published here appear inside every logged-in user&apos;s Account
+                            Dashboard.
+                          </p>
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                            <div className="sm:col-span-2">
+                              <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Notice Headline
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                maxLength={VALIDATION_LIMITS.NOTICE_TITLE_MAX}
+                                value={noticeTitle}
+                                onChange={(e) => setNoticeTitle(e.target.value)}
+                                placeholder="e.g., Graphic Design Live Batch Orientation Schedule"
+                                className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Category
+                              </label>
+                              <select
+                                value={noticeCategory}
+                                onChange={(e) =>
+                                  setNoticeCategory(e.target.value as NoticeCategory)
+                                }
+                                className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                              >
+                                {NOTICE_CATEGORIES.map((cat) => (
+                                  <option key={cat} value={cat}>
+                                    {cat}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                              Notice Details / Message
+                            </label>
+                            <textarea
+                              rows={3}
+                              required
+                              maxLength={VALIDATION_LIMITS.NOTICE_BODY_MAX}
+                              value={noticeBody}
+                              onChange={(e) => setNoticeBody(e.target.value)}
+                              placeholder="Write the full website notice (Bengali or English)..."
+                              className="w-full rounded-xl border border-border bg-background p-3.5 text-sm outline-none focus:border-primary"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                              <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Optional Button Label
+                              </label>
+                              <input
+                                type="text"
+                                maxLength={VALIDATION_LIMITS.NOTICE_ACTION_LABEL_MAX}
+                                value={noticeActionLabel}
+                                onChange={(e) => setNoticeActionLabel(e.target.value)}
+                                placeholder="e.g., Open Course"
+                                className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                Target Website Page
+                              </label>
+                              <select
+                                value={noticeActionRoute}
+                                onChange={(e) => setNoticeActionRoute(e.target.value)}
+                                className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
+                              >
+                                <option value="">No Link Button</option>
+                                <option value="/graphic-design-course">
+                                  Paid Graphic Design &amp; AI Course (/graphic-design-course)
+                                </option>
+                                <option value="/courses">
+                                  Free Quran Learning Course (/courses)
+                                </option>
+                                <option value="/workshop">AI Workshop 2027 (/workshop)</option>
+                                <option value="/projects">
+                                  Projects &amp; Courses (/projects)
+                                </option>
+                                <option value="/contact">Contact Page (/contact)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
+                            <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground">
+                              <input
+                                type="checkbox"
+                                checked={noticeIsPublished}
+                                onChange={(e) => setNoticeIsPublished(e.target.checked)}
+                                className="h-4 w-4 rounded border-border accent-primary"
+                              />
+                              Publish immediately to dashboard
+                            </label>
+
+                            <button
+                              type="submit"
+                              disabled={noticeSubmitting}
+                              className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-full bg-primary px-6 text-xs font-semibold text-primary-foreground shadow-sm disabled:opacity-60"
+                            >
+                              {noticeSubmitting ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Send className="h-3.5 w-3.5" />
+                              )}
+                              {noticeIsPublished ? "Publish Notice" : "Save as Draft"}
+                            </button>
+                          </div>
+                        </div>
+                      </form>
                     )}
                   </div>
                 )}
@@ -1865,159 +2451,170 @@ function AccountPage() {
                       </div>
                     ) : (
                       <div className="space-y-5">
-                        {filteredOrders.map((order) => (
-                          <div
-                            key={order.id}
-                            className="group relative overflow-hidden rounded-2xl border border-border/80 bg-background/75 p-5 shadow-sm transition-all hover:border-foreground/30 sm:p-6"
-                          >
-                            {/* Top Row: Order Number, Date, Status Badges */}
-                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-                              <div className="flex flex-wrap items-center gap-2.5">
-                                <span className="rounded-lg bg-primary px-2.5 py-1 font-mono text-xs font-bold text-primary-foreground">
-                                  {order.orderNumber}
-                                </span>
-                                <span className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                                  <Calendar className="h-3.5 w-3.5" />
-                                  Ordered:{" "}
-                                  <strong className="text-foreground">{order.orderDate}</strong>
-                                </span>
-                              </div>
-
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="rounded-full border border-border/80 bg-muted/60 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
-                                  {order.billingStatus}
-                                </span>
-                                <span
-                                  className={`rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest ${
-                                    order.projectStatus === "Completed"
-                                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                                      : order.projectStatus === "Cancelled"
-                                        ? "bg-destructive/15 text-destructive"
-                                        : "bg-primary/10 text-foreground"
-                                  }`}
-                                >
-                                  {order.projectStatus}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Middle Row: Project Title, Category, Package, Amount */}
-                            <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                    {order.serviceCategory}
+                        {filteredOrders.map((order) => {
+                          const orderAmountBdt = getOrderAmountBdt(order);
+                          const completedDate = getOrderCompletedDate(order);
+                          return (
+                            <div
+                              key={order.id}
+                              className="group relative overflow-hidden rounded-2xl border border-border/80 bg-background/75 p-5 shadow-sm transition-all hover:border-foreground/30 sm:p-6"
+                            >
+                              {/* Top Row: Order Number, Date, Status Badges */}
+                              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/60 pb-4">
+                                <div className="flex flex-wrap items-center gap-2.5">
+                                  <span className="rounded-lg bg-primary px-2.5 py-1 font-mono text-xs font-bold text-primary-foreground">
+                                    {order.orderNumber}
                                   </span>
-                                  <span className="text-muted-foreground">•</span>
-                                  <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
-                                    {order.packageTier} Tier
+                                  <span className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                                    <Calendar className="h-3.5 w-3.5" />
+                                    Order Date:{" "}
+                                    <strong className="text-foreground">{order.orderDate}</strong>
                                   </span>
                                 </div>
-                                <h3 className="mt-1 font-display text-lg font-bold tracking-tight sm:text-xl">
-                                  {order.projectTitle}
-                                </h3>
-                                {order.projectNotes && (
-                                  <p className="mt-1.5 text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
-                                    {order.projectNotes}
-                                  </p>
-                                )}
-                              </div>
 
-                              <div className="shrink-0 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3 text-left sm:text-right">
-                                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                                  Order Total
-                                </p>
-                                <p className="font-display text-2xl font-bold tracking-tight text-foreground">
-                                  ${order.amountUsd.toLocaleString("en-US")}
-                                  <span className="ml-1 text-xs font-normal text-muted-foreground">
-                                    USD
-                                  </span>
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Billing Method, Reference & Delivery Grid */}
-                            <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-border/60 bg-muted/25 p-3.5 sm:grid-cols-3">
-                              <div>
-                                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                                  Billing Method
-                                </p>
-                                <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                                  <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                                  {order.billingMethod}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                                  Billing Reference
-                                </p>
-                                <p className="mt-0.5 truncate font-mono text-xs font-medium text-foreground">
-                                  {order.billingReference}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                                  Est. Delivery
-                                </p>
-                                <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-foreground">
-                                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                                  {order.deliveryEstimate}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Bottom Row: Download Actions & Status Controls */}
-                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-2">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    downloadTextFile(
-                                      `${order.orderNumber}-Invoice.html`,
-                                      buildOrderInvoiceHtml(order, profile),
-                                      "text/html;charset=utf-8",
-                                    )
-                                  }
-                                  className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-all hover:scale-[1.02]"
-                                >
-                                  <Download className="h-3.5 w-3.5" />
-                                  Download Invoice (HTML/PDF)
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    downloadTextFile(
-                                      `${order.orderNumber}-Receipt.txt`,
-                                      buildOrderReceiptText(order, profile),
-                                      "text/plain;charset=utf-8",
-                                    )
-                                  }
-                                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background px-3.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted"
-                                >
-                                  <FileText className="h-3.5 w-3.5" />
-                                  Download Copy (.TXT)
-                                </button>
-                              </div>
-
-                              {order.projectStatus !== "Completed" &&
-                                order.projectStatus !== "Cancelled" && (
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        handleUpdateOrderStatus(order, "Completed", "Paid")
-                                      }
-                                      className="inline-flex h-8 items-center gap-1 rounded-full border border-border/70 bg-muted/50 px-3 text-[10px] font-bold uppercase tracking-wider text-foreground transition-colors hover:bg-muted"
+                                <div className="flex flex-col items-end gap-1.5">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="rounded-full border border-border/80 bg-muted/60 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
+                                      {order.billingStatus}
+                                    </span>
+                                    <span
+                                      className={`rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest ${
+                                        order.projectStatus === "Completed"
+                                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                          : order.projectStatus === "Cancelled"
+                                            ? "bg-destructive/15 text-destructive"
+                                            : "bg-primary/10 text-foreground"
+                                      }`}
                                     >
-                                      <Check className="h-3 w-3" />
-                                      Mark Completed
-                                    </button>
+                                      {order.projectStatus}
+                                    </span>
                                   </div>
-                                )}
+                                  {completedDate && (
+                                    <span className="font-mono text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                                      Completed Date: {completedDate}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Middle Row: Project Title, Category, Package, Amount (BDT) */}
+                              <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                                <div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                      {order.serviceCategory}
+                                    </span>
+                                    <span className="text-muted-foreground">•</span>
+                                    <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
+                                      {order.packageTier} Tier
+                                    </span>
+                                  </div>
+                                  <h3 className="mt-1 font-display text-lg font-bold tracking-tight sm:text-xl">
+                                    {order.projectTitle}
+                                  </h3>
+                                  {order.projectNotes && (
+                                    <p className="mt-1.5 text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
+                                      {order.projectNotes}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="shrink-0 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3 text-left sm:text-right">
+                                  <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                                    Order Total (BDT)
+                                  </p>
+                                  <p className="font-display text-2xl font-bold tracking-tight tabular-nums text-foreground">
+                                    ৳{orderAmountBdt.toLocaleString("en-US")}
+                                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                      BDT
+                                    </span>
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Billing Method, Reference & Delivery Grid */}
+                              <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-border/60 bg-muted/25 p-3.5 sm:grid-cols-3">
+                                <div>
+                                  <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                                    Billing Method
+                                  </p>
+                                  <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                                    <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+                                    {order.billingMethod}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                                    Billing Reference
+                                  </p>
+                                  <p className="mt-0.5 truncate font-mono text-xs font-medium text-foreground">
+                                    {order.billingReference}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                                    Est. Delivery
+                                  </p>
+                                  <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                                    {order.deliveryEstimate}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Bottom Row: Download Actions & Status Controls */}
+                              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      downloadTextFile(
+                                        `${order.orderNumber}-Invoice.html`,
+                                        buildOrderInvoiceHtml(order, profile),
+                                        "text/html;charset=utf-8",
+                                      )
+                                    }
+                                    className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-all hover:scale-[1.02]"
+                                  >
+                                    <Download className="h-3.5 w-3.5" />
+                                    Download Invoice (HTML/PDF)
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      downloadTextFile(
+                                        `${order.orderNumber}-Receipt.txt`,
+                                        buildOrderReceiptText(order, profile),
+                                        "text/plain;charset=utf-8",
+                                      )
+                                    }
+                                    className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background px-3.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted"
+                                  >
+                                    <FileText className="h-3.5 w-3.5" />
+                                    Download Copy (.TXT)
+                                  </button>
+                                </div>
+
+                                {order.projectStatus !== "Completed" &&
+                                  order.projectStatus !== "Cancelled" && (
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          handleUpdateOrderStatus(order, "Completed", "Paid")
+                                        }
+                                        className="inline-flex h-8 cursor-pointer items-center gap-1 rounded-full border border-border/70 bg-muted/50 px-3 text-[10px] font-bold uppercase tracking-wider text-foreground transition-colors hover:bg-muted"
+                                      >
+                                        <Check className="h-3 w-3" />
+                                        Mark Completed
+                                      </button>
+                                    </div>
+                                  )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -2106,15 +2703,15 @@ function AccountPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
                   <label className="mb-1.5 block font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    Budget / Amount (USD)
+                    Budget / Amount (BDT ৳)
                   </label>
                   <input
                     type="number"
-                    min={1}
-                    max={VALIDATION_LIMITS.AMOUNT_MAX}
+                    min={100}
+                    max={VALIDATION_LIMITS.AMOUNT_BDT_MAX}
                     required
-                    value={newAmountUsd}
-                    onChange={(e) => setNewAmountUsd(e.target.value)}
+                    value={newAmountBdt}
+                    onChange={(e) => setNewAmountBdt(e.target.value)}
                     className="h-10 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-primary"
                   />
                 </div>

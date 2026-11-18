@@ -85,4 +85,19 @@ describe("Firestore Security Rules — Dirty Dozen Verification", () => {
     expect(rules).toContain("incoming().amountUsd == existing().amountUsd");
     expect(rules).toContain("incoming().createdAt == existing().createdAt");
   });
+
+  it("13. Enforces BDT amount immutability and allows completedDate on status update", () => {
+    const rules = getRules();
+    expect(rules).toContain("incoming().amountBdt == existing().amountBdt");
+    expect(rules).toContain("'completedDate'");
+  });
+
+  it("14. Restricts /notices writes to verified admins and published reads on list", () => {
+    const rules = getRules();
+    expect(rules).toContain("match /notices/{noticeId}");
+    expect(rules).toContain(
+      "allow list: if isVerifiedUser() && (existing().isPublished == true || isCourseAdmin());",
+    );
+    expect(rules).toContain("allow create: if isCourseAdmin() &&");
+  });
 });

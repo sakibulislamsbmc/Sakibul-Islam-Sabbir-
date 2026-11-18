@@ -135,11 +135,13 @@ service cloud.firestore {
         'serviceCategory',
         'packageTier',
         'amountUsd',
+        'amountBdt',
         'billingMethod',
         'billingReference',
         'billingStatus',
         'projectStatus',
         'orderDate',
+        'completedDate',
         'deliveryEstimate',
         'projectNotes',
         'clientName',
@@ -165,6 +167,7 @@ service cloud.firestore {
         'Custom'
       ] &&
       (data.amountUsd is int || data.amountUsd is float) && data.amountUsd > 0 && data.amountUsd <= 1000000 &&
+      (!('amountBdt' in data) || ((data.amountBdt is int || data.amountBdt is float) && data.amountBdt > 0 && data.amountBdt <= 100000000)) &&
       isValidBillingMethod(data.billingMethod) &&
       data.billingReference is string && data.billingReference.size() >= 2 && data.billingReference.size() <= 80 &&
       data.billingStatus is string && data.billingStatus.size() <= 40 && data.billingStatus in [
@@ -179,6 +182,7 @@ service cloud.firestore {
         'Cancelled'
       ] &&
       data.orderDate is string && data.orderDate.size() >= 8 && data.orderDate.size() <= 32 &&
+      (!('completedDate' in data) || (data.completedDate is string && data.completedDate.size() >= 0 && data.completedDate.size() <= 32)) &&
       data.deliveryEstimate is string && data.deliveryEstimate.size() >= 2 && data.deliveryEstimate.size() <= 60 &&
       data.projectNotes is string && data.projectNotes.size() >= 0 && data.projectNotes.size() <= 1000 &&
       data.clientName is string && data.clientName.size() >= 1 && data.clientName.size() <= 100 &&
@@ -265,6 +269,50 @@ service cloud.firestore {
       data.updatedAt is timestamp;
     }
 
+    // Validation Blueprint: WebsiteNotice (/notices/{noticeId})
+    function isValidWebsiteNotice(data) {
+      return data.keys().hasAll([
+        'title',
+        'category',
+        'body',
+        'actionLabel',
+        'actionRoute',
+        'isPublished',
+        'publishedDate',
+        'publishedByEmail',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'title',
+        'category',
+        'body',
+        'actionLabel',
+        'actionRoute',
+        'isPublished',
+        'publishedDate',
+        'publishedByEmail',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.title is string && data.title.size() >= 2 && data.title.size() <= 140 &&
+      data.category is string && data.category.size() <= 30 && data.category in [
+        'General',
+        'Course Update',
+        'Workshop',
+        'Offer',
+        'Maintenance'
+      ] &&
+      data.body is string && data.body.size() >= 4 && data.body.size() <= 1500 &&
+      data.actionLabel is string && data.actionLabel.size() >= 0 && data.actionLabel.size() <= 60 &&
+      data.actionRoute is string && data.actionRoute.size() >= 0 && data.actionRoute.size() <= 120 &&
+      data.isPublished is bool &&
+      data.publishedDate is string && data.publishedDate.size() >= 8 && data.publishedDate.size() <= 32 &&
+      data.publishedByEmail is string && data.publishedByEmail.size() >= 3 && data.publishedByEmail.size() <= 150 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
     // Collection: /users/{userId}
     match /users/{userId} {
       allow get: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId;
@@ -318,6 +366,7 @@ service cloud.firestore {
         incoming().orderNumber == existing().orderNumber &&
         incoming().orderDate == existing().orderDate &&
         incoming().amountUsd == existing().amountUsd &&
+        (!('amountBdt' in existing()) || ('amountBdt' in incoming() && incoming().amountBdt == existing().amountBdt)) &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
         !(existing().projectStatus in ['Completed', 'Cancelled']) &&
@@ -334,6 +383,7 @@ service cloud.firestore {
           incoming().diff(existing()).affectedKeys().hasOnly([
             'projectStatus',
             'billingStatus',
+            'completedDate',
             'updatedAt'
           ])
         );
@@ -418,6 +468,34 @@ service cloud.firestore {
           )
         );
       allow delete: if false;
+    }
+
+    // Collection: /notices/{noticeId}
+    match /notices/{noticeId} {
+      allow get: if isVerifiedUser() && isValidId(noticeId) && (existing().isPublished == true || isCourseAdmin());
+      allow list: if isVerifiedUser() && (existing().isPublished == true || isCourseAdmin());
+      allow create: if isCourseAdmin() &&
+        isValidId(noticeId) &&
+        isValidWebsiteNotice(incoming()) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+      allow update: if isCourseAdmin() &&
+        isValidId(noticeId) &&
+        isValidWebsiteNotice(incoming()) &&
+        incoming().publishedByEmail == existing().publishedByEmail &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title',
+          'category',
+          'body',
+          'actionLabel',
+          'actionRoute',
+          'isPublished',
+          'publishedDate',
+          'updatedAt'
+        ]);
+      allow delete: if isCourseAdmin() && isValidId(noticeId);
     }
   }
 }

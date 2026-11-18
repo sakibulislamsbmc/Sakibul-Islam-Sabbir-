@@ -132,6 +132,15 @@ export type CoursePaymentStatus = (typeof COURSE_PAYMENT_STATUSES)[number];
 export const COURSE_TYPES = ["Paid Course", "Free Course"] as const;
 export type CourseType = (typeof COURSE_TYPES)[number];
 
+export const NOTICE_CATEGORIES = [
+  "General",
+  "Course Update",
+  "Workshop",
+  "Offer",
+  "Maintenance",
+] as const;
+export type NoticeCategory = (typeof NOTICE_CATEGORIES)[number];
+
 export const VALIDATION_LIMITS = {
   UID_REGEX: /^[a-zA-Z0-9_-]+$/,
   ORDER_NUMBER_REGEX: /^[A-Z0-9-]+$/,
@@ -148,15 +157,21 @@ export const VALIDATION_LIMITS = {
   PROJECT_TITLE_MAX: 120,
   BILLING_REFERENCE_MAX: 80,
   ORDER_DATE_MAX: 32,
+  COMPLETED_DATE_MAX: 32,
   DELIVERY_ESTIMATE_MAX: 60,
   PROJECT_NOTES_MAX: 1000,
   AMOUNT_MAX: 1000000,
+  AMOUNT_BDT_MAX: 100000000,
   COURSE_TITLE_MAX: 150,
   COURSE_ROUTE_MAX: 100,
   PAYMENT_REFERENCE_MAX: 100,
   LAST_LESSON_TITLE_MAX: 140,
   ADMIN_NOTE_MAX: 300,
   COMPLETED_LESSONS_MAX: 40,
+  NOTICE_TITLE_MAX: 140,
+  NOTICE_BODY_MAX: 1500,
+  NOTICE_ACTION_LABEL_MAX: 60,
+  NOTICE_ACTION_ROUTE_MAX: 120,
 } as const;
 
 export interface UserProfileRecord {
@@ -183,11 +198,13 @@ export interface ProjectOrderRecord {
   serviceCategory: ServiceCategory;
   packageTier: PackageTier;
   amountUsd: number;
+  amountBdt?: number;
   billingMethod: BillingMethod;
   billingReference: string;
   billingStatus: BillingStatus;
   projectStatus: ProjectStatus;
   orderDate: string;
+  completedDate?: string;
   deliveryEstimate: string;
   projectNotes: string;
   clientName: string;
@@ -219,6 +236,20 @@ export interface CoursePurchaseRecord {
   verifiedByEmail: string;
   adminNote: string;
   purchaseDate: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface WebsiteNoticeRecord {
+  id: string;
+  title: string;
+  category: NoticeCategory;
+  body: string;
+  actionLabel: string;
+  actionRoute: string;
+  isPublished: boolean;
+  publishedDate: string;
+  publishedByEmail: string;
   createdAt?: unknown;
   updatedAt?: unknown;
 }

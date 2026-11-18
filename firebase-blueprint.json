@@ -149,7 +149,11 @@
         },
         "amountUsd": {
           "type": "number",
-          "description": "Total billed amount in USD."
+          "description": "Legacy USD reference equivalent."
+        },
+        "amountBdt": {
+          "type": "number",
+          "description": "Total billed amount in Bangladeshi Taka (BDT)."
         },
         "billingMethod": {
           "type": "string",
@@ -183,6 +187,12 @@
           "type": "string",
           "description": "Formatted or ISO date string when the order was placed.",
           "minLength": 8,
+          "maxLength": 32
+        },
+        "completedDate": {
+          "type": "string",
+          "description": "Formatted or ISO date string when the project work was completed.",
+          "minLength": 0,
           "maxLength": 32
         },
         "deliveryEstimate": {
@@ -407,6 +417,81 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "WebsiteNotice": {
+      "title": "WebsiteNotice",
+      "description": "Website announcements and course/workshop/service notices displayed inside the client account dashboard.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "description": "Notice headline.",
+          "minLength": 2,
+          "maxLength": 140
+        },
+        "category": {
+          "type": "string",
+          "description": "Notice category.",
+          "enum": ["General", "Course Update", "Workshop", "Offer", "Maintenance"]
+        },
+        "body": {
+          "type": "string",
+          "description": "Detailed notice message.",
+          "minLength": 4,
+          "maxLength": 1500
+        },
+        "actionLabel": {
+          "type": "string",
+          "description": "Optional CTA label for navigating to a related section.",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "actionRoute": {
+          "type": "string",
+          "description": "Optional relative website route.",
+          "minLength": 0,
+          "maxLength": 120
+        },
+        "isPublished": {
+          "type": "boolean",
+          "description": "Whether the notice is visible to signed-in users."
+        },
+        "publishedDate": {
+          "type": "string",
+          "description": "ISO date string for the notice.",
+          "minLength": 8,
+          "maxLength": 32
+        },
+        "publishedByEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified admin email who published the notice.",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the notice was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the notice was last updated."
+        }
+      },
+      "required": [
+        "title",
+        "category",
+        "body",
+        "actionLabel",
+        "actionRoute",
+        "isPublished",
+        "publishedDate",
+        "publishedByEmail",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -416,11 +501,15 @@
     },
     "/orders/{orderId}": {
       "schema": { "$ref": "#/entities/ProjectOrder" },
-      "description": "Client project orders containing billing method, order date, and downloadable receipt metadata."
+      "description": "Client project orders containing billing method, order date, completed date, BDT amount, and downloadable receipt metadata."
     },
     "/coursePurchases/{purchaseId}": {
       "schema": { "$ref": "#/entities/CoursePurchase" },
       "description": "Course enrollment, payment verification status, and per-user lesson progress records."
+    },
+    "/notices/{noticeId}": {
+      "schema": { "$ref": "#/entities/WebsiteNotice" },
+      "description": "Website announcements published by admins and visible inside the account dashboard."
     }
   }
 }
