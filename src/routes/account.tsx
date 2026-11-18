@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import {
@@ -14,7 +14,10 @@ import {
 } from "firebase/firestore";
 import {
   AlertCircle,
+  ArrowUpRight,
+  Award,
   Bell,
+  BookOpen,
   Briefcase,
   Building2,
   Calendar,
@@ -27,6 +30,7 @@ import {
   FileText,
   Globe2,
   Loader2,
+  Lock,
   LogOut,
   Mail,
   MapPin,
@@ -38,20 +42,26 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Unlock,
   User as UserIcon,
   Wallet,
   X,
+  XCircle,
 } from "lucide-react";
 import { MobileBottomNav, MobileHeaderMenu } from "@/components/MobileNavigation";
 import { PWAInstallButton } from "@/components/PWAInstallButton";
+import { QURAN_COURSE } from "@/data/courses-data";
+import { adminUpdateCourseVerification, syncVerifiedCourseProgress } from "@/lib/course-purchases";
 import {
   auth,
   BILLING_METHODS,
   BILLING_STATUSES,
   type BillingMethod,
   type BillingStatus,
+  type CoursePurchaseRecord,
   db,
   handleFirestoreError,
+  isCourseAdminEmail,
   logOutUser,
   OperationType,
   PACKAGE_TIERS,
@@ -283,9 +293,17 @@ function AccountPage() {
   const [billingDetails, setBillingDetails] = useState("");
   const [bio, setBio] = useState("");
 
-  // Orders state
+  // Orders & Course Purchases state
   const [orders, setOrders] = useState<ProjectOrderRecord[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
+  const [coursePurchases, setCoursePurchases] = useState<CoursePurchaseRecord[]>([]);
+  const [purchasesLoading, setPurchasesLoading] = useState(false);
+  const [adminQueuePurchases, setAdminQueuePurchases] = useState<CoursePurchaseRecord[]>([]);
+  const [adminNoteDrafts, setAdminNoteDrafts] = useState<Record<string, string>>({});
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
+  const [dashboardSection, setDashboardSection] = useState<"purchases" | "orders" | "admin">(
+    "purchases",
+  );
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("All");
@@ -412,6 +430,121 @@ function AccountPage() {
     );
 
     return () => unsubscribe();
+  }, [authReady, user]);
+
+  // Subscribe to authenticated user's coursePurchases (+ all queue for verified admin)
+  useEffect(() => {
+    if (!authReady || !user) {
+      setCoursePurchases([]);
+      setAdminQueuePurchases([]);
+      return;
+    }
+
+    setPurchasesLoading(true);
+    const purchasesPath = "coursePurchases";
+    const userPurchasesQuery = query(
+      collection(db, "coursePurchases"),
+      where("uid", "==", user.uid),
+    );
+
+    const unsubUser = onSnapshot(
+      userPurchasesQuery,
+      (snapshot) => {
+        const list: CoursePurchaseRecord[] = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<CoursePurchaseRecord, "id">),
+        }));
+        list.sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate));
+        setCoursePurchases(list);
+        setPurchasesLoading(false);
+      },
+      (error) => {
+        setPurchasesLoading(false);
+        handleFirestoreError(error, OperationType.LIST, purchasesPath);
+      },
+    );
+
+    // Sync any local Quran free-course progress into user's account if present
+    try {
+      const localRaw = window.localStorage.getItem("ss_quran_course_progress_v2");
+      if (localRaw && user.emailVerified) {
+        const parsed = JSON.parse(localRaw) as {
+          watchedIds?: string[];
+          quizResults?: Record<string, { score: number; total: number }>;
+        };
+        const watchedIds = Array.isArray(parsed.watchedIds) ? parsed.watchedIds : [];
+        const quizResults = parsed.quizResults || {};
+        const completedIds = QURAN_COURSE.lessons
+          .filter((l) => watchedIds.includes(l.id) && Boolean(quizResults[l.id]))
+          .map((l) => l.id);
+        if (completedIds.length > 0 || watchedIds.length > 0) {
+          const quizEntries = Object.values(quizResults);
+          const avgPct =
+            quizEntries.length > 0
+              ? quizEntries.reduce((acc, q) => acc + (q.score / Math.max(1, q.total)) * 100, 0) /
+                quizEntries.length
+              : 0;
+          const activeTitle =
+            QURAN_COURSE.lessons.find((l) => l.id === watchedIds[watchedIds.length - 1])
+              ?.topicTitle || QURAN_COURSE.lessons[0]!.topicTitle;
+          void syncVerifiedCourseProgress({
+            user,
+            courseId: QURAN_COURSE.id,
+            courseTitle: QURAN_COURSE.title,
+            courseRoute: "/courses",
+            courseType: "Free Course",
+            totalLessonsCount: QURAN_COURSE.lessons.length,
+            completedLessonIds: completedIds,
+            averageQuizScore: avgPct,
+            lastActiveLessonTitle: activeTitle,
+          }).catch(() => {
+            // Ignore passive sync issue
+          });
+        }
+      }
+    } catch {
+      // Ignore storage error
+    }
+
+    let unsubAdmin: (() => void) | undefined;
+    if (isCourseAdminEmail(user.email)) {
+      const adminQuery = query(collection(db, "coursePurchases"));
+      unsubAdmin = onSnapshot(
+        adminQuery,
+        (snapshot) => {
+          const allList: CoursePurchaseRecord[] = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<CoursePurchaseRecord, "id">),
+          }));
+          allList.sort((a, b) => {
+            if (
+              a.paymentStatus === "Pending Verification" &&
+              b.paymentStatus !== "Pending Verification"
+            ) {
+              return -1;
+            }
+            if (
+              b.paymentStatus === "Pending Verification" &&
+              a.paymentStatus !== "Pending Verification"
+            ) {
+              return 1;
+            }
+            return b.purchaseDate.localeCompare(a.purchaseDate);
+          });
+          setAdminQueuePurchases(allList);
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.LIST, purchasesPath);
+        },
+      );
+    } else {
+      setAdminQueuePurchases([]);
+    }
+
+    return () => {
+      unsubUser();
+      if (unsubAdmin) unsubAdmin();
+    };
   }, [authReady, user]);
 
   const handleGoogleSignIn = async () => {
@@ -621,6 +754,40 @@ function AccountPage() {
       handleFirestoreError(error, OperationType.CREATE, path);
     } finally {
       setOrderSubmitting(false);
+    }
+  };
+
+  const handleAdminVerifyCourse = async (
+    purchase: CoursePurchaseRecord,
+    nextStatus: "Verified" | "Rejected",
+  ) => {
+    if (!user?.email || !isCourseAdminEmail(user.email)) return;
+    setVerifyingId(purchase.id);
+    setBannerMessage(null);
+    const note =
+      adminNoteDrafts[purchase.id]?.trim() ||
+      (nextStatus === "Verified"
+        ? "Payment verified. Full course access unlocked."
+        : "Transaction ID could not be verified. Please re-submit valid TrxID.");
+
+    try {
+      await adminUpdateCourseVerification({
+        purchaseId: purchase.id,
+        adminEmail: user.email,
+        nextStatus,
+        adminNote: note,
+      });
+      setBannerMessage({
+        type: "success",
+        text: `${purchase.studentEmail} — status updated to "${nextStatus}".`,
+      });
+    } catch (error) {
+      setBannerMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Could not update payment status.",
+      });
+    } finally {
+      setVerifyingId(null);
     }
   };
 
@@ -981,19 +1148,52 @@ function AccountPage() {
                 <p className="truncate font-mono text-[11px] text-muted-foreground">{user.email}</p>
               </div>
 
-              <div className="rounded-3xl border border-border/80 bg-background/60 p-5 shadow-sm backdrop-blur-2xl">
+              <button
+                type="button"
+                onClick={() => setDashboardSection("purchases")}
+                className={`rounded-3xl border p-5 text-left shadow-sm backdrop-blur-2xl transition-colors ${
+                  dashboardSection === "purchases"
+                    ? "border-primary bg-background/85 ring-1 ring-primary/20"
+                    : "border-border/80 bg-background/60 hover:border-foreground/30"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                    Purchased Courses
+                  </span>
+                  <BookOpen className="h-4 w-4 text-foreground" />
+                </div>
+                <p className="mt-2 font-display text-2xl font-bold tabular-nums">
+                  {coursePurchases.length}
+                </p>
+                <p className="font-mono text-[11px] text-muted-foreground">
+                  {coursePurchases.filter((c) => c.paymentStatus === "Verified").length} Active •{" "}
+                  {coursePurchases.filter((c) => c.paymentStatus === "Pending Verification").length}{" "}
+                  Pending
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDashboardSection("orders")}
+                className={`rounded-3xl border p-5 text-left shadow-sm backdrop-blur-2xl transition-colors ${
+                  dashboardSection === "orders"
+                    ? "border-primary bg-background/85 ring-1 ring-primary/20"
+                    : "border-border/80 bg-background/60 hover:border-foreground/30"
+                }`}
+              >
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
                     Total Project Orders
                   </span>
                   <Briefcase className="h-4 w-4 text-foreground" />
                 </div>
-                <p className="mt-2 font-display text-2xl font-bold">{orders.length}</p>
+                <p className="mt-2 font-display text-2xl font-bold tabular-nums">{orders.length}</p>
                 <p className="font-mono text-[11px] text-muted-foreground">
                   {orders.filter((o) => o.projectStatus === "In Progress").length} Active •{" "}
                   {orders.filter((o) => o.projectStatus === "Completed").length} Completed
                 </p>
-              </div>
+              </button>
 
               <div className="rounded-3xl border border-border/80 bg-background/60 p-5 shadow-sm backdrop-blur-2xl">
                 <div className="flex items-center justify-between">
@@ -1015,7 +1215,7 @@ function AccountPage() {
                   </span>
                   <Receipt className="h-4 w-4 text-foreground" />
                 </div>
-                <p className="mt-2 font-display text-2xl font-bold">
+                <p className="mt-2 font-display text-2xl font-bold tabular-nums">
                   ${totalSpentUsd.toLocaleString("en-US")}
                 </p>
                 <p className="font-mono text-[11px] text-muted-foreground">
@@ -1024,7 +1224,56 @@ function AccountPage() {
               </div>
             </div>
 
-            {/* Main Two-Column Layout: Left = Profile & Billing Settings, Right = Project Orders */}
+            {/* Section Switcher Bar */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-border/60 pb-4">
+              <button
+                type="button"
+                onClick={() => setDashboardSection("purchases")}
+                className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-5 text-xs font-semibold transition-colors ${
+                  dashboardSection === "purchases"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "border border-border/80 bg-background/70 text-foreground hover:bg-muted"
+                }`}
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                Purchases &amp; Courses ({coursePurchases.length})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setDashboardSection("orders")}
+                className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-5 text-xs font-semibold transition-colors ${
+                  dashboardSection === "orders"
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "border border-border/80 bg-background/70 text-foreground hover:bg-muted"
+                }`}
+              >
+                <Receipt className="h-3.5 w-3.5" />
+                Project Orders ({orders.length})
+              </button>
+
+              {isCourseAdminEmail(user.email) && (
+                <button
+                  type="button"
+                  onClick={() => setDashboardSection("admin")}
+                  className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-full px-5 text-xs font-semibold transition-colors ${
+                    dashboardSection === "admin"
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "border border-border/80 bg-background/70 text-foreground hover:bg-muted"
+                  }`}
+                >
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Admin Payment Verification (
+                  {
+                    adminQueuePurchases.filter((p) => p.paymentStatus === "Pending Verification")
+                      .length
+                  }{" "}
+                  Pending)
+                </button>
+              )}
+            </div>
+
+            {/* Main Two-Column Layout: Left = Profile & Billing Settings, Right = Purchases / Orders / Admin */}
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
               {/* Left Column: Profile & Billing Management */}
               <div className="lg:col-span-5">
@@ -1202,260 +1451,577 @@ function AccountPage() {
                 </form>
               </div>
 
-              {/* Right Column: Project Orders & Downloadable Receipts */}
+              {/* Right Column: Purchases, Project Orders, or Admin Verification Queue */}
               <div className="lg:col-span-7">
-                <div className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8">
-                  <div className="mb-6 flex flex-col justify-between gap-4 border-b border-border/60 pb-5 sm:flex-row sm:items-center">
-                    <div>
-                      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                        Order History &amp; Billing Records
-                      </span>
-                      <h2 className="mt-1 font-display text-2xl font-bold tracking-tight">
-                        Your Project Orders
-                      </h2>
-                    </div>
+                {dashboardSection === "purchases" && (
+                  <div className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8">
+                    <div className="mb-6 flex flex-col justify-between gap-4 border-b border-border/60 pb-5 sm:flex-row sm:items-center">
+                      <div>
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                          Enrolled Courses &amp; Progress
+                        </span>
+                        <h2 className="mt-1 font-display text-2xl font-bold tracking-tight">
+                          Your Purchases &amp; Courses
+                        </h2>
+                      </div>
 
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      {orders.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleDownloadAllOrdersCsv}
-                          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background/80 px-3.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted"
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link
+                          to="/graphic-design-course"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm"
                         >
-                          <FileSpreadsheet className="h-3.5 w-3.5" />
-                          Export All (CSV)
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setShowNewOrderModal(true)}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-105"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        New Order
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Filter Tabs */}
-                  <div className="mb-6 flex flex-wrap gap-2">
-                    {["All", ...PROJECT_STATUSES].map((st) => (
-                      <button
-                        key={st}
-                        type="button"
-                        onClick={() => setStatusFilter(st)}
-                        className={`rounded-full px-3.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest transition-all ${
-                          statusFilter === st
-                            ? "bg-primary text-primary-foreground shadow-sm"
-                            : "border border-border/70 bg-muted/40 text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {st}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Orders List */}
-                  {ordersLoading ? (
-                    <div className="flex flex-col items-center justify-center py-16 text-center">
-                      <Loader2 className="mb-3 h-6 w-6 animate-spin text-muted-foreground" />
-                      <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
-                        Loading your project orders…
-                      </p>
-                    </div>
-                  ) : filteredOrders.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-10 text-center">
-                      <Receipt className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                      <h3 className="font-display text-lg font-bold">
-                        {orders.length === 0
-                          ? "No project orders placed yet"
-                          : `No orders with status "${statusFilter}"`}
-                      </h3>
-                      <p className="mx-auto mt-1.5 max-w-md text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
-                        Place a new project order for web development, app development, graphic
-                        design, or video editing — or generate a sample order to preview invoice
-                        downloads.
-                      </p>
-                      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setShowNewOrderModal(true)}
-                          className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground shadow-sm"
+                          Browse Paid Course
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                        </Link>
+                        <Link
+                          to="/courses"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background/80 px-3.5 text-[11px] font-semibold text-foreground hover:bg-muted"
                         >
-                          <Plus className="h-3.5 w-3.5" />
-                          Place Project Order
-                        </button>
-                        {orders.length === 0 && (
-                          <button
-                            type="button"
-                            disabled={orderSubmitting}
-                            onClick={handleSeedSampleOrder}
-                            className="inline-flex h-10 items-center gap-2 rounded-full border border-border/80 bg-background px-5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            Generate Sample Order
-                          </button>
-                        )}
+                          Quran Course (Free)
+                        </Link>
                       </div>
                     </div>
-                  ) : (
-                    <div className="space-y-5">
-                      {filteredOrders.map((order) => (
-                        <div
-                          key={order.id}
-                          className="group relative overflow-hidden rounded-2xl border border-border/80 bg-background/75 p-5 shadow-sm transition-all hover:border-foreground/30 sm:p-6"
-                        >
-                          {/* Top Row: Order Number, Date, Status Badges */}
-                          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-                            <div className="flex flex-wrap items-center gap-2.5">
-                              <span className="rounded-lg bg-primary px-2.5 py-1 font-mono text-xs font-bold text-primary-foreground">
-                                {order.orderNumber}
-                              </span>
-                              <span className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-                                <Calendar className="h-3.5 w-3.5" />
-                                Ordered:{" "}
-                                <strong className="text-foreground">{order.orderDate}</strong>
-                              </span>
-                            </div>
 
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="rounded-full border border-border/80 bg-muted/60 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
-                                {order.billingStatus}
-                              </span>
-                              <span
-                                className={`rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest ${
-                                  order.projectStatus === "Completed"
-                                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                                    : order.projectStatus === "Cancelled"
-                                      ? "bg-destructive/15 text-destructive"
-                                      : "bg-primary/10 text-foreground"
-                                }`}
-                              >
-                                {order.projectStatus}
-                              </span>
-                            </div>
-                          </div>
+                    {purchasesLoading ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <Loader2 className="mb-3 h-6 w-6 animate-spin text-muted-foreground" />
+                        <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                          Loading your enrolled courses…
+                        </p>
+                      </div>
+                    ) : coursePurchases.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-10 text-center">
+                        <BookOpen className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                        <h3 className="font-display text-lg font-bold">
+                          No courses enrolled or purchased yet
+                        </h3>
+                        <p className="mx-auto mt-1.5 max-w-md text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
+                          Enroll in the Advanced Graphic Design with AI Tools Live Course (৳6,000)
+                          or start the free Quran learning course — your verification status and
+                          lesson progress will appear here automatically.
+                        </p>
+                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                          <Link
+                            to="/graphic-design-course"
+                            className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground"
+                          >
+                            Enroll Graphic Design Course
+                            <ArrowUpRight className="h-3.5 w-3.5" />
+                          </Link>
+                          <Link
+                            to="/courses"
+                            className="inline-flex h-10 items-center gap-2 rounded-full border border-border bg-background px-5 text-xs font-semibold text-foreground hover:bg-muted"
+                          >
+                            Start Quran Course
+                          </Link>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-5">
+                        {coursePurchases.map((item) => {
+                          const isVerified = item.paymentStatus === "Verified";
+                          const isPending = item.paymentStatus === "Pending Verification";
+                          return (
+                            <div
+                              key={item.id}
+                              className="rounded-2xl border border-border/80 bg-background/80 p-5 shadow-sm transition-all hover:border-foreground/30 sm:p-6"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                  <span className="font-mono font-bold text-foreground">
+                                    {item.courseType}
+                                  </span>
+                                  <span aria-hidden="true">·</span>
+                                  <span className="font-mono tabular-nums">
+                                    Enrolled: {item.purchaseDate}
+                                  </span>
+                                </div>
 
-                          {/* Middle Row: Project Title, Category, Package, Amount */}
-                          <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                  {order.serviceCategory}
-                                </span>
-                                <span className="text-muted-foreground">•</span>
-                                <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
-                                  {order.packageTier} Tier
+                                <span
+                                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                                    isVerified
+                                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                      : isPending
+                                        ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                        : "bg-destructive/15 text-destructive"
+                                  }`}
+                                >
+                                  {isVerified ? (
+                                    <Unlock className="h-3 w-3" />
+                                  ) : isPending ? (
+                                    <Clock className="h-3 w-3" />
+                                  ) : (
+                                    <XCircle className="h-3 w-3" />
+                                  )}
+                                  {item.paymentStatus}
                                 </span>
                               </div>
-                              <h3 className="mt-1 font-display text-lg font-bold tracking-tight sm:text-xl">
-                                {order.projectTitle}
-                              </h3>
-                              {order.projectNotes && (
-                                <p className="mt-1.5 text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
-                                  {order.projectNotes}
-                                </p>
-                              )}
-                            </div>
 
-                            <div className="shrink-0 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3 text-left sm:text-right">
-                              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                                Order Total
-                              </p>
-                              <p className="font-display text-2xl font-bold tracking-tight text-foreground">
-                                ${order.amountUsd.toLocaleString("en-US")}
-                                <span className="ml-1 text-xs font-normal text-muted-foreground">
-                                  USD
+                              <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                                <div>
+                                  <h3 className="font-display text-lg font-bold tracking-tight text-foreground sm:text-xl">
+                                    {item.courseTitle}
+                                  </h3>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    Method:{" "}
+                                    <strong className="text-foreground">
+                                      {item.paymentMethod}
+                                    </strong>{" "}
+                                    · Ref:{" "}
+                                    <span className="font-mono">{item.paymentReference}</span>
+                                  </p>
+                                  {item.adminNote && (
+                                    <p className="mt-1.5 text-xs text-muted-foreground">
+                                      Note: {item.adminNote}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="shrink-0 rounded-2xl border border-border/70 bg-muted/30 px-4 py-2.5 text-left sm:text-right">
+                                  <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                                    Course Fee
+                                  </p>
+                                  <p className="font-display text-xl font-bold tabular-nums text-foreground">
+                                    {item.amountBdt > 0
+                                      ? `৳${item.amountBdt.toLocaleString("en-US")}`
+                                      : "Free"}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Progress Tracker */}
+                              <div className="mt-4 rounded-xl border border-border/60 bg-muted/25 p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                                  <span className="flex items-center gap-1.5 font-semibold text-foreground">
+                                    <Award className="h-4 w-4 text-muted-foreground" />
+                                    Course Progress
+                                  </span>
+                                  <span className="font-mono font-bold tabular-nums text-foreground">
+                                    {item.completedLessonsCount}/{item.totalLessonsCount} Classes (
+                                    {item.progressPct}%)
+                                  </span>
+                                </div>
+
+                                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-background">
+                                  <div
+                                    className="h-full rounded-full bg-primary transition-all duration-300"
+                                    style={{ width: `${item.progressPct}%` }}
+                                  />
+                                </div>
+
+                                <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                                  <span className="truncate">
+                                    Last Active:{" "}
+                                    <strong className="text-foreground">
+                                      {item.lastActiveLessonTitle || "Ready to begin"}
+                                    </strong>
+                                  </span>
+                                  {item.averageQuizScore > 0 && (
+                                    <span className="font-mono tabular-nums">
+                                      Avg Quiz Score: {Math.round(item.averageQuizScore)}%
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-1">
+                                <span className="text-xs text-muted-foreground">
+                                  {isVerified
+                                    ? "Access active — continue your sequential lessons."
+                                    : isPending
+                                      ? "Classroom locked until admin confirms your TrxID."
+                                      : "Payment verification rejected — resubmit on the course page."}
                                 </span>
-                              </p>
-                            </div>
-                          </div>
 
-                          {/* Billing Method, Reference & Delivery Grid */}
-                          <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-border/60 bg-muted/25 p-3.5 sm:grid-cols-3">
-                            <div>
-                              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                                Billing Method
-                              </p>
-                              <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                                <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                                {order.billingMethod}
-                              </p>
+                                <Link
+                                  to={item.courseRoute as "/graphic-design-course" | "/courses"}
+                                  className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm"
+                                >
+                                  {isVerified ? "Open Course Classroom" : "View Course Status"}
+                                  <ArrowUpRight className="h-3.5 w-3.5" />
+                                </Link>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                                Billing Reference
-                              </p>
-                              <p className="mt-0.5 truncate font-mono text-xs font-medium text-foreground">
-                                {order.billingReference}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                                Est. Delivery
-                              </p>
-                              <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-foreground">
-                                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                                {order.deliveryEstimate}
-                              </p>
-                            </div>
-                          </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                          {/* Bottom Row: Download Actions & Status Controls */}
-                          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  downloadTextFile(
-                                    `${order.orderNumber}-Invoice.html`,
-                                    buildOrderInvoiceHtml(order, profile),
-                                    "text/html;charset=utf-8",
-                                  )
-                                }
-                                className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-all hover:scale-[1.02]"
+                {dashboardSection === "admin" && isCourseAdminEmail(user.email) && (
+                  <div className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8">
+                    <div className="mb-6 border-b border-border/60 pb-5">
+                      <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                        Admin Verification Controls
+                      </span>
+                      <h2 className="mt-1 font-display text-2xl font-bold tracking-tight">
+                        Course Payment Verification Queue
+                      </h2>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Review student TrxIDs submitted via Google Account and approve classroom
+                        access for paid courses.
+                      </p>
+                    </div>
+
+                    {adminQueuePurchases.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-border p-10 text-center text-xs text-muted-foreground">
+                        No course purchase submissions yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {adminQueuePurchases.map((p) => (
+                          <div
+                            key={p.id}
+                            className="rounded-2xl border border-border/80 bg-background/85 p-5 shadow-xs"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+                              <div>
+                                <p className="font-display text-base font-bold text-foreground">
+                                  {p.studentName} ·{" "}
+                                  <span className="font-mono text-xs font-normal text-muted-foreground">
+                                    {p.studentEmail}
+                                  </span>
+                                </p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  {p.courseTitle} ({p.courseType})
+                                </p>
+                              </div>
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                                  p.paymentStatus === "Verified"
+                                    ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                    : p.paymentStatus === "Pending Verification"
+                                      ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                      : "bg-destructive/15 text-destructive"
+                                }`}
                               >
-                                <Download className="h-3.5 w-3.5" />
-                                Download Invoice (HTML/PDF)
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  downloadTextFile(
-                                    `${order.orderNumber}-Receipt.txt`,
-                                    buildOrderReceiptText(order, profile),
-                                    "text/plain;charset=utf-8",
-                                  )
-                                }
-                                className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background px-3.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted"
-                              >
-                                <FileText className="h-3.5 w-3.5" />
-                                Download Copy (.TXT)
-                              </button>
+                                {p.paymentStatus}
+                              </span>
                             </div>
 
-                            {order.projectStatus !== "Completed" &&
-                              order.projectStatus !== "Cancelled" && (
+                            <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                              <div>
+                                <span className="text-muted-foreground">Fee: </span>
+                                <strong className="font-mono">
+                                  {p.amountBdt > 0 ? `৳${p.amountBdt}` : "Free"}
+                                </strong>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Ref: </span>
+                                <strong className="font-mono">{p.paymentReference}</strong>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">Phone: </span>
+                                <strong className="font-mono">{p.studentPhone || "N/A"}</strong>
+                              </div>
+                            </div>
+
+                            {p.courseType === "Paid Course" && (
+                              <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3 sm:flex-row sm:items-center">
+                                <input
+                                  type="text"
+                                  value={adminNoteDrafts[p.id] ?? p.adminNote ?? ""}
+                                  onChange={(e) =>
+                                    setAdminNoteDrafts((prev) => ({
+                                      ...prev,
+                                      [p.id]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder="Optional verification note / batch link…"
+                                  className="h-9 flex-1 rounded-xl border border-border bg-background px-3 text-xs outline-none focus:border-primary"
+                                />
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() =>
-                                      handleUpdateOrderStatus(order, "Completed", "Paid")
+                                    disabled={
+                                      verifyingId === p.id || p.paymentStatus === "Verified"
                                     }
-                                    className="inline-flex h-8 items-center gap-1 rounded-full border border-border/70 bg-muted/50 px-3 text-[10px] font-bold uppercase tracking-wider text-foreground transition-colors hover:bg-muted"
+                                    onClick={() => handleAdminVerifyCourse(p, "Verified")}
+                                    className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
                                   >
-                                    <Check className="h-3 w-3" />
-                                    Mark Completed
+                                    {verifyingId === p.id ? (
+                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                    )}
+                                    Verify Payment
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      verifyingId === p.id || p.paymentStatus === "Rejected"
+                                    }
+                                    onClick={() => handleAdminVerifyCourse(p, "Rejected")}
+                                    className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-destructive/40 px-4 text-[11px] font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                                  >
+                                    <XCircle className="h-3.5 w-3.5" />
+                                    Reject
                                   </button>
                                 </div>
-                              )}
+                              </div>
+                            )}
                           </div>
-                        </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {dashboardSection === "orders" && (
+                  <div className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-[0_20px_50px_-15px_rgba(0,0,0,0.07)] backdrop-blur-2xl sm:p-8">
+                    <div className="mb-6 flex flex-col justify-between gap-4 border-b border-border/60 pb-5 sm:flex-row sm:items-center">
+                      <div>
+                        <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                          Order History &amp; Billing Records
+                        </span>
+                        <h2 className="mt-1 font-display text-2xl font-bold tracking-tight">
+                          Your Project Orders
+                        </h2>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {orders.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleDownloadAllOrdersCsv}
+                            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background/80 px-3.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted"
+                          >
+                            <FileSpreadsheet className="h-3.5 w-3.5" />
+                            Export All (CSV)
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowNewOrderModal(true)}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-105"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          New Order
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Filter Tabs */}
+                    <div className="mb-6 flex flex-wrap gap-2">
+                      {["All", ...PROJECT_STATUSES].map((st) => (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => setStatusFilter(st)}
+                          className={`rounded-full px-3.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest transition-all ${
+                            statusFilter === st
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : "border border-border/70 bg-muted/40 text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          {st}
+                        </button>
                       ))}
                     </div>
-                  )}
-                </div>
+
+                    {/* Orders List */}
+                    {ordersLoading ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-center">
+                        <Loader2 className="mb-3 h-6 w-6 animate-spin text-muted-foreground" />
+                        <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+                          Loading your project orders…
+                        </p>
+                      </div>
+                    ) : filteredOrders.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-border/80 bg-muted/20 p-10 text-center">
+                        <Receipt className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+                        <h3 className="font-display text-lg font-bold">
+                          {orders.length === 0
+                            ? "No project orders placed yet"
+                            : `No orders with status "${statusFilter}"`}
+                        </h3>
+                        <p className="mx-auto mt-1.5 max-w-md text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
+                          Place a new project order for web development, app development, graphic
+                          design, or video editing — or generate a sample order to preview invoice
+                          downloads.
+                        </p>
+                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setShowNewOrderModal(true)}
+                            className="inline-flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground shadow-sm"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Place Project Order
+                          </button>
+                          {orders.length === 0 && (
+                            <button
+                              type="button"
+                              disabled={orderSubmitting}
+                              onClick={handleSeedSampleOrder}
+                              className="inline-flex h-10 items-center gap-2 rounded-full border border-border/80 bg-background px-5 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                            >
+                              <Sparkles className="h-3.5 w-3.5" />
+                              Generate Sample Order
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-5">
+                        {filteredOrders.map((order) => (
+                          <div
+                            key={order.id}
+                            className="group relative overflow-hidden rounded-2xl border border-border/80 bg-background/75 p-5 shadow-sm transition-all hover:border-foreground/30 sm:p-6"
+                          >
+                            {/* Top Row: Order Number, Date, Status Badges */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
+                              <div className="flex flex-wrap items-center gap-2.5">
+                                <span className="rounded-lg bg-primary px-2.5 py-1 font-mono text-xs font-bold text-primary-foreground">
+                                  {order.orderNumber}
+                                </span>
+                                <span className="inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
+                                  <Calendar className="h-3.5 w-3.5" />
+                                  Ordered:{" "}
+                                  <strong className="text-foreground">{order.orderDate}</strong>
+                                </span>
+                              </div>
+
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full border border-border/80 bg-muted/60 px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
+                                  {order.billingStatus}
+                                </span>
+                                <span
+                                  className={`rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-widest ${
+                                    order.projectStatus === "Completed"
+                                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                      : order.projectStatus === "Cancelled"
+                                        ? "bg-destructive/15 text-destructive"
+                                        : "bg-primary/10 text-foreground"
+                                  }`}
+                                >
+                                  {order.projectStatus}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Middle Row: Project Title, Category, Package, Amount */}
+                            <div className="mt-4 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                    {order.serviceCategory}
+                                  </span>
+                                  <span className="text-muted-foreground">•</span>
+                                  <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-foreground">
+                                    {order.packageTier} Tier
+                                  </span>
+                                </div>
+                                <h3 className="mt-1 font-display text-lg font-bold tracking-tight sm:text-xl">
+                                  {order.projectTitle}
+                                </h3>
+                                {order.projectNotes && (
+                                  <p className="mt-1.5 text-xs font-light leading-relaxed text-muted-foreground sm:text-sm">
+                                    {order.projectNotes}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="shrink-0 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3 text-left sm:text-right">
+                                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                                  Order Total
+                                </p>
+                                <p className="font-display text-2xl font-bold tracking-tight text-foreground">
+                                  ${order.amountUsd.toLocaleString("en-US")}
+                                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                                    USD
+                                  </span>
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Billing Method, Reference & Delivery Grid */}
+                            <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-border/60 bg-muted/25 p-3.5 sm:grid-cols-3">
+                              <div>
+                                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                                  Billing Method
+                                </p>
+                                <p className="mt-0.5 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                                  <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
+                                  {order.billingMethod}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                                  Billing Reference
+                                </p>
+                                <p className="mt-0.5 truncate font-mono text-xs font-medium text-foreground">
+                                  {order.billingReference}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                                  Est. Delivery
+                                </p>
+                                <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-foreground">
+                                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                                  {order.deliveryEstimate}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Bottom Row: Download Actions & Status Controls */}
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    downloadTextFile(
+                                      `${order.orderNumber}-Invoice.html`,
+                                      buildOrderInvoiceHtml(order, profile),
+                                      "text/html;charset=utf-8",
+                                    )
+                                  }
+                                  className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-all hover:scale-[1.02]"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                  Download Invoice (HTML/PDF)
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    downloadTextFile(
+                                      `${order.orderNumber}-Receipt.txt`,
+                                      buildOrderReceiptText(order, profile),
+                                      "text/plain;charset=utf-8",
+                                    )
+                                  }
+                                  className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border/80 bg-background px-3.5 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted"
+                                >
+                                  <FileText className="h-3.5 w-3.5" />
+                                  Download Copy (.TXT)
+                                </button>
+                              </div>
+
+                              {order.projectStatus !== "Completed" &&
+                                order.projectStatus !== "Cancelled" && (
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleUpdateOrderStatus(order, "Completed", "Paid")
+                                      }
+                                      className="inline-flex h-8 items-center gap-1 rounded-full border border-border/70 bg-muted/50 px-3 text-[10px] font-bold uppercase tracking-wider text-foreground transition-colors hover:bg-muted"
+                                    >
+                                      <Check className="h-3 w-3" />
+                                      Mark Completed
+                                    </button>
+                                  </div>
+                                )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

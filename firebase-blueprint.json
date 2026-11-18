@@ -240,6 +240,173 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "CoursePurchase": {
+      "title": "CoursePurchase",
+      "description": "Course enrollment, payment verification record, and learner completion progress per user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the enrolled student.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "courseId": {
+          "type": "string",
+          "description": "Unique slug identifier of the course.",
+          "minLength": 2,
+          "maxLength": 80,
+          "pattern": "^[a-z0-9\\-]+$"
+        },
+        "courseTitle": {
+          "type": "string",
+          "description": "Display title of the course.",
+          "minLength": 2,
+          "maxLength": 150
+        },
+        "courseRoute": {
+          "type": "string",
+          "description": "Frontend route path for opening the course.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "courseType": {
+          "type": "string",
+          "description": "Whether this course is paid or free.",
+          "enum": ["Paid Course", "Free Course"]
+        },
+        "amountBdt": {
+          "type": "number",
+          "description": "Course enrollment fee in BDT (0 for free courses)."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "Payment channel used for enrollment.",
+          "enum": [
+            "bKash",
+            "Nagad",
+            "Dutch-Bangla Bank",
+            "Visa / Mastercard",
+            "PayPal",
+            "Wire Transfer",
+            "Free Enrollment"
+          ]
+        },
+        "paymentReference": {
+          "type": "string",
+          "description": "Transaction ID, sender account reference, or free enrollment marker.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "paymentStatus": {
+          "type": "string",
+          "description": "Verification status controlling classroom access.",
+          "enum": ["Pending Verification", "Verified", "Rejected"]
+        },
+        "studentName": {
+          "type": "string",
+          "description": "Full name of the student.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "studentEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Google Account email used for purchase.",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "studentPhone": {
+          "type": "string",
+          "description": "WhatsApp or phone number for live batch onboarding.",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "completedLessonIds": {
+          "type": "array",
+          "description": "Bounded list of completed lesson IDs.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "completedLessonsCount": {
+          "type": "integer",
+          "description": "Number of completed lessons."
+        },
+        "totalLessonsCount": {
+          "type": "integer",
+          "description": "Total number of lessons in the course."
+        },
+        "progressPct": {
+          "type": "integer",
+          "description": "Percentage completion (0 to 100)."
+        },
+        "averageQuizScore": {
+          "type": "number",
+          "description": "Average percentage score across submitted quizzes."
+        },
+        "lastActiveLessonTitle": {
+          "type": "string",
+          "description": "Title of the most recently opened or completed class.",
+          "minLength": 0,
+          "maxLength": 140
+        },
+        "verifiedByEmail": {
+          "type": "string",
+          "description": "Verified admin email if reviewed.",
+          "minLength": 0,
+          "maxLength": 150
+        },
+        "adminNote": {
+          "type": "string",
+          "description": "Admin verification remark or batch onboarding note.",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "purchaseDate": {
+          "type": "string",
+          "description": "ISO date string when enrollment was created.",
+          "minLength": 8,
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when purchase record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when purchase or progress was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "courseId",
+        "courseTitle",
+        "courseRoute",
+        "courseType",
+        "amountBdt",
+        "paymentMethod",
+        "paymentReference",
+        "paymentStatus",
+        "studentName",
+        "studentEmail",
+        "studentPhone",
+        "completedLessonIds",
+        "completedLessonsCount",
+        "totalLessonsCount",
+        "progressPct",
+        "averageQuizScore",
+        "lastActiveLessonTitle",
+        "verifiedByEmail",
+        "adminNote",
+        "purchaseDate",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -250,6 +417,10 @@
     "/orders/{orderId}": {
       "schema": { "$ref": "#/entities/ProjectOrder" },
       "description": "Client project orders containing billing method, order date, and downloadable receipt metadata."
+    },
+    "/coursePurchases/{purchaseId}": {
+      "schema": { "$ref": "#/entities/CoursePurchase" },
+      "description": "Course enrollment, payment verification status, and per-user lesson progress records."
     }
   }
 }

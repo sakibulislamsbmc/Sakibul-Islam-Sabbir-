@@ -36,6 +36,9 @@ export function CourseQuizSection({
   isVideoWatched,
   savedResult,
   hasNextClass,
+  durationSeconds = QUIZ_DURATION_SECONDS,
+  lockedPrompt,
+  readyPrompt,
   onQuizSubmitted,
   onUnlockAndGoNext,
 }: {
@@ -44,13 +47,17 @@ export function CourseQuizSection({
   isVideoWatched: boolean;
   savedResult: SavedQuizResult | undefined;
   hasNextClass: boolean;
+  durationSeconds?: number;
+  lockedPrompt?: string;
+  readyPrompt?: string;
   onQuizSubmitted: (result: SavedQuizResult) => void;
   onUnlockAndGoNext: () => void;
 }) {
   const [quizActive, setQuizActive] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(QUIZ_DURATION_SECONDS);
+  const [secondsLeft, setSecondsLeft] = useState(durationSeconds);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [showReview, setShowReview] = useState(false);
+  const durationMins = Math.max(1, Math.round(durationSeconds / 60));
 
   const gradeAndSubmit = useCallback(
     (isAuto: boolean, currentAnswers: Record<string, number>) => {
@@ -86,7 +93,7 @@ export function CourseQuizSection({
     [questions, onQuizSubmitted],
   );
 
-  // 20-minute countdown timer with automatic submission at 00:00
+  // Countdown timer with automatic submission at 00:00
   useEffect(() => {
     if (!quizActive) return;
 
@@ -106,7 +113,7 @@ export function CourseQuizSection({
 
   const startQuiz = () => {
     setAnswers({});
-    setSecondsLeft(QUIZ_DURATION_SECONDS);
+    setSecondsLeft(durationSeconds);
     setShowReview(false);
     setQuizActive(true);
   };
@@ -127,7 +134,7 @@ export function CourseQuizSection({
           </div>
           <div>
             <p className="text-xs font-medium text-muted-foreground">
-              ক্লাস {classSerial} মূল্যায়ন · ২৫টি MCQ · ২০ মিনিট সময়
+              ক্লাস {classSerial} মূল্যায়ন · {questions.length}টি MCQ · {durationMins} মিনিট সময়
             </p>
             <h4 className="mt-0.5 text-base font-bold text-foreground sm:text-lg">
               ক্লাস {classSerial} পরবর্তী কুইজ পরীক্ষা
@@ -143,35 +150,33 @@ export function CourseQuizSection({
         )}
       </div>
 
-      {/* State 1: Locked until video watched */}
+      {/* State 1: Locked until lesson/video watched */}
       {!isVideoWatched && (
         <div className="mt-4 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
           <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
-            এই ক্লাসের ২৫টি MCQ কুইজ আনলক করতে প্রথমে উপরের ভিডিওটি শুরু থেকে শেষ পর্যন্ত না টেনে
-            সম্পূর্ণ দেখুন।
+            {lockedPrompt ||
+              `এই ক্লাসের ${questions.length}টি MCQ কুইজ আনলক করতে প্রথমে উপরের ভিডিওটি শুরু থেকে শেষ পর্যন্ত না টেনে সম্পূর্ণ দেখুন।`}
           </p>
           <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-3.5 py-1.5 text-xs font-semibold text-muted-foreground">
             <Lock className="h-3.5 w-3.5" />
-            ভিডিও দেখার পর আনলক হবে
+            ক্লাস শেষ করার পর আনলক হবে
           </span>
         </div>
       )}
 
-      {/* State 2: Video watched, quiz not started and no result yet */}
+      {/* State 2: Lesson watched/completed, quiz not started and no result yet */}
       {isVideoWatched && !quizActive && !savedResult && (
         <div className="mt-4 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
           <div className="space-y-1 text-xs leading-relaxed text-muted-foreground sm:text-sm">
             <p>
-              ক্লাস {classSerial}-এর ভিডিও সম্পন্ন হয়েছে! এখন এই ক্লাসের পাঠের ওপর ভিত্তি করে{" "}
-              <strong className="font-semibold text-foreground">
-                ২৫টি বহুনির্বাচনি (MCQ) প্রশ্ন
-              </strong>{" "}
-              উত্তর দিন।
+              {readyPrompt ||
+                `ক্লাস ${classSerial}-এর পাঠ সম্পন্ন হয়েছে! এখন এই ক্লাসের ওপর ভিত্তি করে ${questions.length}টি বহুনির্বাচনি (MCQ) প্রশ্নের উত্তর দিন।`}
             </p>
             <p>
-              সময়সীমা: <strong className="font-semibold text-foreground">২০ মিনিট</strong> (২০
-              মিনিট পূর্ণ হলে স্বয়ংক্রিয়ভাবে সাবমিট হয়ে যাবে)। কুইজ সম্পন্ন হলে পরবর্তী ক্লাস
-              আনলক হবে।
+              সময়সীমা:{" "}
+              <strong className="font-semibold text-foreground">{durationMins} মিনিট</strong> (
+              {durationMins} মিনিট পূর্ণ হলে স্বয়ংক্রিয়ভাবে সাবমিট হয়ে যাবে)। কুইজ সম্পন্ন হলে
+              পরবর্তী ক্লাস আনলক হবে।
             </p>
           </div>
 
@@ -186,7 +191,7 @@ export function CourseQuizSection({
         </div>
       )}
 
-      {/* State 3: Active Timed Quiz (25 MCQs) */}
+      {/* State 3: Active Timed Quiz */}
       {quizActive && (
         <div className="mt-5 space-y-5">
           {/* Progress Sticky Bar inside Quiz */}
@@ -198,7 +203,7 @@ export function CourseQuizSection({
               </strong>
             </span>
             <span className="text-muted-foreground">
-              ২০ মিনিট পর স্বয়ংক্রিয়ভাবে কুইজ সাবমিট হবে
+              {durationMins} মিনিট পর স্বয়ংক্রিয়ভাবে কুইজ সাবমিট হবে
             </span>
           </div>
 
@@ -271,7 +276,7 @@ export function CourseQuizSection({
         <div className="mt-5 space-y-5">
           {savedResult.autoSubmitted && (
             <p className="text-xs font-medium text-muted-foreground">
-              ২০ মিনিট সময় পূর্ণ হওয়ায় আপনার কুইজ স্বয়ংক্রিয়ভাবে সাবমিট হয়েছে।
+              {durationMins} মিনিট সময় পূর্ণ হওয়ায় আপনার কুইজ স্বয়ংক্রিয়ভাবে সাবমিট হয়েছে।
             </p>
           )}
 

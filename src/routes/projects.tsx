@@ -20,6 +20,7 @@ import {
 import { MobileBottomNav, MobileHeaderMenu } from "@/components/MobileNavigation";
 import { PWAInstallButton } from "@/components/PWAInstallButton";
 import { QURAN_COURSE } from "@/data/courses-data";
+import { GRAPHIC_DESIGN_COURSE } from "@/data/graphic-design-course-data";
 import { EVENT_CONFIG, WORKSHOP_ASSETS } from "@/data/workshop-data";
 
 export const Route = createFileRoute("/projects")({
@@ -390,7 +391,7 @@ function ProjectsPage() {
                       : "border-border/80 bg-background/40 text-muted-foreground backdrop-blur-md hover:border-foreground/30 hover:text-foreground"
                   }`}
                 >
-                  All Projects (12)
+                  All Projects (13)
                 </button>
                 <button
                   type="button"
@@ -438,7 +439,7 @@ function ProjectsPage() {
                   }`}
                 >
                   <BookOpen className="h-3.5 w-3.5" />
-                  04. Courses (1)
+                  04. Courses (2)
                 </button>
               </div>
 
@@ -853,6 +854,96 @@ function ProjectsPage() {
                         </span>
                         <span className="inline-flex items-center gap-1">
                           কোর্স খুলুন
+                          <ArrowUpRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+
+                {/* Course 02: Paid Course — Advanced Graphic Design with AI Tools Live Course */}
+                <Link
+                  to="/graphic-design-course"
+                  className="group flex flex-col rounded-3xl border border-border/80 bg-background/55 p-4 shadow-xl shadow-black/[0.04] ring-1 ring-inset ring-foreground/[0.05] backdrop-blur-2xl transition-all duration-200 hover:-translate-y-1 hover:border-foreground/30 hover:bg-background/80 hover:shadow-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {/* Course Thumbnail */}
+                  <div className="overflow-hidden rounded-2xl border border-border/60 bg-background/40 p-1.5">
+                    <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-muted/40">
+                      <img
+                        src={GRAPHIC_DESIGN_COURSE.thumbnail}
+                        alt={GRAPHIC_DESIGN_COURSE.title}
+                        referrerPolicy="no-referrer"
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Course Details */}
+                  <div className="mt-3.5 flex flex-1 flex-col justify-between rounded-2xl border border-border/60 bg-background/70 p-5 font-['Hind_Siliguri','Plus_Jakarta_Sans',sans-serif]">
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Bismahsoft Academy · {GRAPHIC_DESIGN_COURSE.lessons.length}+ ক্লাস · পেইড
+                        লাইভ কোর্স
+                      </p>
+
+                      <h3 className="mt-1.5 text-xl font-bold leading-snug tracking-tight text-foreground">
+                        {GRAPHIC_DESIGN_COURSE.title}
+                      </h3>
+                      <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+                        {GRAPHIC_DESIGN_COURSE.tagline}
+                      </p>
+
+                      {/* Course Mentor Profile (Sakibul Islam Sabbir) */}
+                      <div className="mt-4 flex items-center gap-3 border-t border-border/60 pt-4">
+                        <img
+                          src={GRAPHIC_DESIGN_COURSE.mentor.avatar}
+                          alt={GRAPHIC_DESIGN_COURSE.mentor.name}
+                          referrerPolicy="no-referrer"
+                          className="h-11 w-11 shrink-0 rounded-full border border-border object-cover object-top"
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-foreground">
+                            {GRAPHIC_DESIGN_COURSE.mentor.name}
+                          </p>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {GRAPHIC_DESIGN_COURSE.mentor.roleTitle}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Fee, Rating & Action Footer */}
+                    <div className="mt-4 space-y-2.5 border-t border-border/60 pt-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                          <div className="flex items-center gap-0.5 text-amber-500">
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                            <Star className="h-3.5 w-3.5 fill-current" />
+                          </div>
+                          <span className="font-mono tabular-nums">
+                            {GRAPHIC_DESIGN_COURSE.rating}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 font-mono tabular-nums">
+                          <span className="text-[11px] text-muted-foreground line-through">
+                            ৳{GRAPHIC_DESIGN_COURSE.originalPriceBdt.toLocaleString("en-US")}
+                          </span>
+                          <span className="font-bold text-foreground">
+                            ৳{GRAPHIC_DESIGN_COURSE.priceBdt.toLocaleString("en-US")}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+                        <span className="text-[11px] font-normal text-muted-foreground">
+                          Google Login + Payment Verified
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          এনরোল ও বিস্তারিত
                           <ArrowUpRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                         </span>
                       </div>

@@ -125,7 +125,7 @@ function CoursesPage() {
       </header>
 
       <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-4 pb-24 pt-24 sm:px-6 md:pt-28 lg:px-8">
-        <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <Link
             to="/projects"
             className="inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-background/80 px-4 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
@@ -133,6 +133,21 @@ function CoursesPage() {
             <ArrowLeft className="h-3.5 w-3.5" />
             Back to Projects
           </Link>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to="/graphic-design-course"
+              className="inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full border border-border bg-background/80 px-4 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+            >
+              Graphic Design &amp; AI Course (Paid)
+            </Link>
+            <Link
+              to="/account"
+              className="inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full border border-border bg-background/80 px-4 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
+            >
+              My Purchases
+            </Link>
+          </div>
         </div>
 
         <CourseLMSPlayer />

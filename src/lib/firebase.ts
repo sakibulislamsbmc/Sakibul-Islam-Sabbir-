@@ -113,9 +113,29 @@ export type BillingStatus = (typeof BILLING_STATUSES)[number];
 export const PROJECT_STATUSES = ["In Progress", "In Review", "Completed", "Cancelled"] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
+export const COURSE_ADMIN_EMAILS = [
+  "sakibulislamsbmc@gmail.com",
+  "sakibulislam.rc@gmail.com",
+] as const;
+
+export function isCourseAdminEmail(email?: string | null): boolean {
+  if (!email) return false;
+  return (COURSE_ADMIN_EMAILS as readonly string[]).includes(email.toLowerCase());
+}
+
+export const COURSE_PAYMENT_METHODS = [...BILLING_METHODS, "Free Enrollment"] as const;
+export type CoursePaymentMethod = (typeof COURSE_PAYMENT_METHODS)[number];
+
+export const COURSE_PAYMENT_STATUSES = ["Pending Verification", "Verified", "Rejected"] as const;
+export type CoursePaymentStatus = (typeof COURSE_PAYMENT_STATUSES)[number];
+
+export const COURSE_TYPES = ["Paid Course", "Free Course"] as const;
+export type CourseType = (typeof COURSE_TYPES)[number];
+
 export const VALIDATION_LIMITS = {
   UID_REGEX: /^[a-zA-Z0-9_-]+$/,
   ORDER_NUMBER_REGEX: /^[A-Z0-9-]+$/,
+  COURSE_ID_REGEX: /^[a-z0-9-]+$/,
   DISPLAY_NAME_MAX: 100,
   EMAIL_MAX: 150,
   PHOTO_URL_MAX: 500,
@@ -131,6 +151,12 @@ export const VALIDATION_LIMITS = {
   DELIVERY_ESTIMATE_MAX: 60,
   PROJECT_NOTES_MAX: 1000,
   AMOUNT_MAX: 1000000,
+  COURSE_TITLE_MAX: 150,
+  COURSE_ROUTE_MAX: 100,
+  PAYMENT_REFERENCE_MAX: 100,
+  LAST_LESSON_TITLE_MAX: 140,
+  ADMIN_NOTE_MAX: 300,
+  COMPLETED_LESSONS_MAX: 40,
 } as const;
 
 export interface UserProfileRecord {
@@ -166,6 +192,33 @@ export interface ProjectOrderRecord {
   projectNotes: string;
   clientName: string;
   clientEmail: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface CoursePurchaseRecord {
+  id: string;
+  uid: string;
+  courseId: string;
+  courseTitle: string;
+  courseRoute: string;
+  courseType: CourseType;
+  amountBdt: number;
+  paymentMethod: CoursePaymentMethod;
+  paymentReference: string;
+  paymentStatus: CoursePaymentStatus;
+  studentName: string;
+  studentEmail: string;
+  studentPhone: string;
+  completedLessonIds: string[];
+  completedLessonsCount: number;
+  totalLessonsCount: number;
+  progressPct: number;
+  averageQuizScore: number;
+  lastActiveLessonTitle: string;
+  verifiedByEmail: string;
+  adminNote: string;
+  purchaseDate: string;
   createdAt?: unknown;
   updatedAt?: unknown;
 }

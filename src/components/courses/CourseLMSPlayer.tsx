@@ -13,8 +13,11 @@ import {
   Star,
   Users,
 } from "lucide-react";
+import { onAuthStateChanged, type User } from "firebase/auth";
 import { CLASS_QUIZZES } from "@/data/course-quizzes";
 import { QURAN_COURSE } from "@/data/courses-data";
+import { syncVerifiedCourseProgress } from "@/lib/course-purchases";
+import { auth } from "@/lib/firebase";
 import { CourseQuizSection, type SavedQuizResult } from "./CourseQuizSection";
 import { CourseVideoPlayer } from "./CourseVideoPlayer";
 
@@ -39,6 +42,14 @@ export function CourseLMSPlayer() {
   const [activeVisitors, setActiveVisitors] = useState<number | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [canNativeShare, setCanNativeShare] = useState(false);
+  const [signedInUser, setSignedInUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setSignedInUser(u);
+    });
+    return () => unsub();
+  }, []);
 
   // Real-time course presence heartbeat with server endpoint
   useEffect(() => {
@@ -175,34 +186,74 @@ export function CourseLMSPlayer() {
     }
   }, [course.lessons]);
 
-  const saveProgress = (next: PersistedCourseProgress) => {
+  const syncAccountProgress = (next: PersistedCourseProgress, activeTitle?: string) => {
+    if (!signedInUser || !signedInUser.emailVerified) return;
+    const completedIds = course.lessons
+      .filter((l) => next.watchedIds.includes(l.id) && Boolean(next.quizResults[l.id]))
+      .map((l) => l.id);
+    const quizEntries = Object.values(next.quizResults);
+    const avgPct =
+      quizEntries.length > 0
+        ? quizEntries.reduce((acc, q) => acc + (q.score / Math.max(1, q.total)) * 100, 0) /
+          quizEntries.length
+        : 0;
+    const fallbackTitle =
+      course.lessons.find((l) => l.id === completedIds[completedIds.length - 1])?.topicTitle ||
+      course.lessons[0]?.topicTitle ||
+      "Class 01";
+
+    void syncVerifiedCourseProgress({
+      user: signedInUser,
+      courseId: course.id,
+      courseTitle: course.title,
+      courseRoute: "/courses",
+      courseType: "Free Course",
+      totalLessonsCount: course.lessons.length,
+      completedLessonIds: completedIds,
+      averageQuizScore: avgPct,
+      lastActiveLessonTitle: activeTitle || fallbackTitle,
+    }).catch(() => {
+      // Ignore background cloud sync failures for free local playback
+    });
+  };
+
+  const saveProgress = (next: PersistedCourseProgress, activeTitle?: string) => {
     setProgress(next);
     try {
       window.localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(next));
     } catch {
       // Ignore storage write error
     }
+    syncAccountProgress(next, activeTitle);
   };
 
   const handleMarkVideoWatched = (lessonId: string) => {
     if (progress.watchedIds.includes(lessonId)) return;
-    saveProgress({
-      ...progress,
-      watchedIds: [...progress.watchedIds, lessonId],
-    });
+    const lesson = course.lessons.find((l) => l.id === lessonId);
+    saveProgress(
+      {
+        ...progress,
+        watchedIds: [...progress.watchedIds, lessonId],
+      },
+      lesson?.topicTitle,
+    );
   };
 
   const handleQuizSubmitted = (lessonId: string, result: SavedQuizResult) => {
+    const lesson = course.lessons.find((l) => l.id === lessonId);
     const nextWatched = progress.watchedIds.includes(lessonId)
       ? progress.watchedIds
       : [...progress.watchedIds, lessonId];
-    saveProgress({
-      watchedIds: nextWatched,
-      quizResults: {
-        ...progress.quizResults,
-        [lessonId]: result,
+    saveProgress(
+      {
+        watchedIds: nextWatched,
+        quizResults: {
+          ...progress.quizResults,
+          [lessonId]: result,
+        },
       },
-    });
+      lesson?.topicTitle,
+    );
   };
 
   const isLessonUnlocked = (index: number): boolean => {

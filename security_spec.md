@@ -14,6 +14,11 @@
    - `get` and `list` on `/orders/{orderId}` are strictly restricted to documents where `resource.data.uid == request.auth.uid` (no blanket `isSignedIn()` reads).
    - `update` on `/orders/{orderId}` is forbidden once `existing().projectStatus in ['Completed', 'Cancelled']` (Terminal State Locking). When active, only action-based updates (`projectNotes`, `billingMethod`, `billingReference`, `billingStatus`, `projectStatus`, `updatedAt`) by the owner are permitted, while `uid`, `orderNumber`, `orderDate`, `amountUsd`, and `createdAt` remain strictly immutable.
    - Timestamp fields (`createdAt` on create, `updatedAt` on create/update) must equal `request.time`.
+4. **Course Enrollment & Payment Verification (`CoursePurchase` at `/coursePurchases/{purchaseId}`)**:
+   - Students must sign in with a verified Google account (`isVerifiedUser()`).
+   - Creating a `Paid Course` purchase forces `paymentStatus == 'Pending Verification'`, zero progress, and empty admin verification metadata so students cannot self-approve access.
+   - Only verified admins (`isCourseAdmin()`) can transition `paymentStatus` to `'Verified'` or `'Rejected'`.
+   - Students can update lesson completion and quiz progress (`completedLessonIds`, `completedLessonsCount`, `progressPct`, `averageQuizScore`, `lastActiveLessonTitle`) **only after** `existing().paymentStatus == 'Verified'`.
 
 ## 2. The "Dirty Dozen" Payloads
 
@@ -27,9 +32,10 @@
 8. **Order Identity Spoofing**: Authenticated `user_1` attempting `create /orders/order_1` with `uid: "user_2"` -> `PERMISSION_DENIED`.
 9. **Unauthorized Order List Scraping (Query Trust Test)**: Authenticated `user_2` querying `/orders` without filtering `uid == "user_2"` -> `PERMISSION_DENIED`.
 10. **Client Timestamp Forgery**: Authenticated `user_1` attempting `create /orders/order_1` with a forged past/future `createdAt` timestamp != `request.time` -> `PERMISSION_DENIED`.
-11. **Terminal State Mutation**: Authenticated `user_1` attempting `update /orders/order_completed` when `existing().projectStatus == "Completed"` -> `PERMISSION_DENIED`.
+11. **Paid Course Self-Verification Spoofing**: Authenticated `user_1` attempting to create or update `/coursePurchases/p_1` with `paymentStatus: "Verified"` -> `PERMISSION_DENIED`.
 12. **Immutable Order Amount Tampering**: Authenticated `user_1` attempting to modify `amountUsd` on an active `/orders/order_1` during an update -> `PERMISSION_DENIED`.
 
 ## 3. Test Suite Reference
 
 See `/firestore.rules.test.ts` for the automated test suite verifying all 12 Dirty Dozen payloads return `PERMISSION_DENIED`.
+

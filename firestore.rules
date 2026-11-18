@@ -28,6 +28,14 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
+    function isCourseAdmin() {
+      return isVerifiedUser() &&
+        request.auth.token.email in [
+          'sakibulislamsbmc@gmail.com',
+          'sakibulislam.rc@gmail.com'
+        ];
+    }
+
     function isValidBillingMethod(method) {
       return method is string && method.size() <= 40 && method in [
         'bKash',
@@ -36,6 +44,18 @@ service cloud.firestore {
         'Visa / Mastercard',
         'PayPal',
         'Wire Transfer'
+      ];
+    }
+
+    function isValidCoursePaymentMethod(method) {
+      return method is string && method.size() <= 40 && method in [
+        'bKash',
+        'Nagad',
+        'Dutch-Bangla Bank',
+        'Visa / Mastercard',
+        'PayPal',
+        'Wire Transfer',
+        'Free Enrollment'
       ];
     }
 
@@ -167,6 +187,84 @@ service cloud.firestore {
       data.updatedAt is timestamp;
     }
 
+    // Validation Blueprint: CoursePurchase (/coursePurchases/{purchaseId})
+    function isValidCoursePurchase(data) {
+      return data.keys().hasAll([
+        'uid',
+        'courseId',
+        'courseTitle',
+        'courseRoute',
+        'courseType',
+        'amountBdt',
+        'paymentMethod',
+        'paymentReference',
+        'paymentStatus',
+        'studentName',
+        'studentEmail',
+        'studentPhone',
+        'completedLessonIds',
+        'completedLessonsCount',
+        'totalLessonsCount',
+        'progressPct',
+        'averageQuizScore',
+        'lastActiveLessonTitle',
+        'verifiedByEmail',
+        'adminNote',
+        'purchaseDate',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid',
+        'courseId',
+        'courseTitle',
+        'courseRoute',
+        'courseType',
+        'amountBdt',
+        'paymentMethod',
+        'paymentReference',
+        'paymentStatus',
+        'studentName',
+        'studentEmail',
+        'studentPhone',
+        'completedLessonIds',
+        'completedLessonsCount',
+        'totalLessonsCount',
+        'progressPct',
+        'averageQuizScore',
+        'lastActiveLessonTitle',
+        'verifiedByEmail',
+        'adminNote',
+        'purchaseDate',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.courseId is string && data.courseId.size() >= 2 && data.courseId.size() <= 80 && data.courseId.matches('^[a-z0-9\\-]+$') &&
+      data.courseTitle is string && data.courseTitle.size() >= 2 && data.courseTitle.size() <= 150 &&
+      data.courseRoute is string && data.courseRoute.size() >= 1 && data.courseRoute.size() <= 100 &&
+      data.courseType is string && data.courseType in ['Paid Course', 'Free Course'] &&
+      (data.amountBdt is int || data.amountBdt is float) && data.amountBdt >= 0 && data.amountBdt <= 500000 &&
+      isValidCoursePaymentMethod(data.paymentMethod) &&
+      data.paymentReference is string && data.paymentReference.size() >= 2 && data.paymentReference.size() <= 100 &&
+      data.paymentStatus is string && data.paymentStatus in ['Pending Verification', 'Verified', 'Rejected'] &&
+      data.studentName is string && data.studentName.size() >= 1 && data.studentName.size() <= 100 &&
+      data.studentEmail is string && data.studentEmail.size() >= 3 && data.studentEmail.size() <= 150 &&
+      data.studentPhone is string && data.studentPhone.size() >= 0 && data.studentPhone.size() <= 40 &&
+      data.completedLessonIds is list && data.completedLessonIds.size() <= 40 &&
+      (data.completedLessonIds.size() == 0 || data.completedLessonIds[0] is string) &&
+      data.completedLessonsCount is int && data.completedLessonsCount >= 0 && data.completedLessonsCount <= 40 &&
+      data.totalLessonsCount is int && data.totalLessonsCount >= 1 && data.totalLessonsCount <= 40 &&
+      data.progressPct is int && data.progressPct >= 0 && data.progressPct <= 100 &&
+      (data.averageQuizScore is int || data.averageQuizScore is float) && data.averageQuizScore >= 0 && data.averageQuizScore <= 100 &&
+      data.lastActiveLessonTitle is string && data.lastActiveLessonTitle.size() >= 0 && data.lastActiveLessonTitle.size() <= 140 &&
+      data.verifiedByEmail is string && data.verifiedByEmail.size() >= 0 && data.verifiedByEmail.size() <= 150 &&
+      data.adminNote is string && data.adminNote.size() >= 0 && data.adminNote.size() <= 300 &&
+      data.purchaseDate is string && data.purchaseDate.size() >= 8 && data.purchaseDate.size() <= 32 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
     // Collection: /users/{userId}
     match /users/{userId} {
       allow get: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId;
@@ -238,6 +336,86 @@ service cloud.firestore {
             'billingStatus',
             'updatedAt'
           ])
+        );
+      allow delete: if false;
+    }
+
+    // Collection: /coursePurchases/{purchaseId}
+    match /coursePurchases/{purchaseId} {
+      allow get: if isVerifiedUser() && isValidId(purchaseId) && (existing().uid == request.auth.uid || isCourseAdmin());
+      allow list: if isVerifiedUser() && (existing().uid == request.auth.uid || isCourseAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(purchaseId) &&
+        isValidCoursePurchase(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (
+          (
+            incoming().courseType == 'Paid Course' &&
+            incoming().paymentStatus == 'Pending Verification' &&
+            incoming().amountBdt > 0 &&
+            incoming().verifiedByEmail == '' &&
+            incoming().adminNote == '' &&
+            incoming().completedLessonIds.size() == 0 &&
+            incoming().completedLessonsCount == 0 &&
+            incoming().progressPct == 0
+          ) ||
+          (
+            incoming().courseType == 'Free Course' &&
+            incoming().paymentStatus == 'Verified' &&
+            incoming().amountBdt == 0 &&
+            incoming().paymentMethod == 'Free Enrollment'
+          )
+        );
+      allow update: if isVerifiedUser() &&
+        isValidId(purchaseId) &&
+        isValidCoursePurchase(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().courseId == existing().courseId &&
+        incoming().courseType == existing().courseType &&
+        incoming().amountBdt == existing().amountBdt &&
+        incoming().purchaseDate == existing().purchaseDate &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Action 1: Verified student updates own lesson completion & quiz progress
+          (
+            existing().uid == request.auth.uid &&
+            existing().paymentStatus == 'Verified' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'completedLessonIds',
+              'completedLessonsCount',
+              'progressPct',
+              'averageQuizScore',
+              'lastActiveLessonTitle',
+              'updatedAt'
+            ])
+          ) ||
+          // Action 2: Student re-submits rejected payment transaction details
+          (
+            existing().uid == request.auth.uid &&
+            existing().paymentStatus == 'Rejected' &&
+            incoming().paymentStatus == 'Pending Verification' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'paymentMethod',
+              'paymentReference',
+              'studentPhone',
+              'paymentStatus',
+              'adminNote',
+              'updatedAt'
+            ])
+          ) ||
+          // Action 3: Course Admin verifies or rejects submitted payment
+          (
+            isCourseAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'paymentStatus',
+              'verifiedByEmail',
+              'adminNote',
+              'updatedAt'
+            ])
+          )
         );
       allow delete: if false;
     }
