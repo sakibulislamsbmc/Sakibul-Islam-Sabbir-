@@ -134,6 +134,7 @@ export type PackageTier = (typeof PACKAGE_TIERS)[number];
 
 export const BILLING_STATUSES = [
   "Pending Verification",
+  "Approved",
   "Paid",
   "Installment (50% Paid)",
   "Rejected",

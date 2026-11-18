@@ -251,13 +251,16 @@ function isAdminLoginRateLimited(ip: string, now: number): boolean {
   const attempts = (adminLoginBuckets.get(ip) ?? []).filter(
     (ts) => now - ts < ADMIN_LOGIN_WINDOW_MS,
   );
-  if (attempts.length >= ADMIN_LOGIN_MAX_ATTEMPTS) {
-    adminLoginBuckets.set(ip, attempts);
-    return true;
-  }
+  adminLoginBuckets.set(ip, attempts);
+  return attempts.length >= ADMIN_LOGIN_MAX_ATTEMPTS;
+}
+
+function recordFailedAdminLogin(ip: string, now: number): void {
+  const attempts = (adminLoginBuckets.get(ip) ?? []).filter(
+    (ts) => now - ts < ADMIN_LOGIN_WINDOW_MS,
+  );
   attempts.push(now);
   adminLoginBuckets.set(ip, attempts);
-  return false;
 }
 
 function parseCookies(cookieHeader: string | null): Record<string, string> {
@@ -306,10 +309,17 @@ async function verifyAdminSessionToken(
 }
 
 async function handleAdminAuthRequest(request: Request, pathname: string): Promise<Response> {
-  const adminEmail = (await readLocalEnvVar("ADMIN_EMAIL")).toLowerCase();
-  const adminHash = await readLocalEnvVar("ADMIN_PASSWORD_HASH");
-  const sessionSecret = await readLocalEnvVar("ADMIN_SESSION_SECRET");
-  const isHttps = request.url.startsWith("https://");
+  const { DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD_HASH, getRuntimeAdminSessionSecret } =
+    await import("./lib/admin-auth-config");
+
+  const adminEmail = DEFAULT_ADMIN_EMAIL.toLowerCase();
+  const adminHash = DEFAULT_ADMIN_PASSWORD_HASH;
+  const sessionSecret =
+    (await readLocalEnvVar("ADMIN_SESSION_SECRET")) || getRuntimeAdminSessionSecret();
+
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const isHttps = request.url.startsWith("https://") || forwardedProto === "https";
+  const cookieFlags = isHttps ? "SameSite=None; Secure" : "SameSite=Lax";
 
   if (pathname === "/api/admin/session") {
     const cookies = parseCookies(request.headers.get("cookie"));
@@ -336,7 +346,7 @@ async function handleAdminAuthRequest(request: Request, pathname: string): Promi
       headers: {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "no-store",
-        "set-cookie": `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${isHttps ? "; Secure" : ""}`,
+        "set-cookie": `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; ${cookieFlags}; Max-Age=0`,
       },
     });
   }
@@ -349,8 +359,9 @@ async function handleAdminAuthRequest(request: Request, pathname: string): Promi
       });
     }
 
+    const clientIp = getClientIp(request);
     const now = Date.now();
-    if (isAdminLoginRateLimited(getClientIp(request), now)) {
+    if (isAdminLoginRateLimited(clientIp, now)) {
       return new Response(
         JSON.stringify({
           ok: false,
@@ -361,13 +372,6 @@ async function handleAdminAuthRequest(request: Request, pathname: string): Promi
           status: 429,
           headers: { "content-type": "application/json; charset=utf-8", "retry-after": "900" },
         },
-      );
-    }
-
-    if (!adminEmail || !adminHash || !sessionSecret) {
-      return new Response(
-        JSON.stringify({ ok: false, error: "Server admin authentication is not configured." }),
-        { status: 503, headers: { "content-type": "application/json; charset=utf-8" } },
       );
     }
 
@@ -389,7 +393,7 @@ async function handleAdminAuthRequest(request: Request, pathname: string): Promi
     }
 
     const submittedEmail = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-    const submittedPassword = typeof body.password === "string" ? body.password : "";
+    const submittedPassword = typeof body.password === "string" ? body.password.trim() : "";
 
     const crypto = await import("node:crypto");
     const emailBuf = Buffer.from(submittedEmail, "utf8");
@@ -410,6 +414,7 @@ async function handleAdminAuthRequest(request: Request, pathname: string): Promi
     }
 
     if (!emailMatches || !passwordMatches) {
+      recordFailedAdminLogin(clientIp, now);
       return new Response(
         JSON.stringify({
           ok: false,
@@ -425,6 +430,7 @@ async function handleAdminAuthRequest(request: Request, pathname: string): Promi
       );
     }
 
+    adminLoginBuckets.delete(clientIp);
     const payloadB64 = Buffer.from(
       JSON.stringify({ email: adminEmail, exp: now + 12 * 60 * 60 * 1000 }),
       "utf8",
@@ -437,7 +443,7 @@ async function handleAdminAuthRequest(request: Request, pathname: string): Promi
       headers: {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "no-store",
-        "set-cookie": `${ADMIN_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=43200${isHttps ? "; Secure" : ""}`,
+        "set-cookie": `${ADMIN_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; HttpOnly; ${cookieFlags}; Max-Age=43200`,
       },
     });
   }
