@@ -193,6 +193,7 @@ const SAFE_APP_ROUTES = new Set<string>([
   "/contact",
   "/courses",
   "/graphic-design-course",
+  "/books",
   "/workshop",
   "/account",
 ]);
@@ -210,6 +211,9 @@ export type CoursePaymentStatus = (typeof COURSE_PAYMENT_STATUSES)[number];
 
 export const COURSE_TYPES = ["Paid Course", "Free Course"] as const;
 export type CourseType = (typeof COURSE_TYPES)[number];
+
+export const BOOK_PAYMENT_STATUSES = ["Pending Verification", "Verified", "Rejected"] as const;
+export type BookPaymentStatus = (typeof BOOK_PAYMENT_STATUSES)[number];
 
 export const NOTICE_CATEGORIES = [
   "General",
@@ -254,6 +258,7 @@ export const VALIDATION_LIMITS = {
   APPLICATION_SUBJECT_MAX: 140,
   APPLICATION_DETAILS_MAX: 1500,
   APPLICATION_REFERENCE_MAX: 100,
+  BOOK_TITLE_MAX: 150,
 } as const;
 
 export interface UserProfileRecord {
@@ -339,6 +344,25 @@ export interface CoursePurchaseRecord {
   progressPct: number;
   averageQuizScore: number;
   lastActiveLessonTitle: string;
+  verifiedByEmail: string;
+  adminNote: string;
+  purchaseDate: string;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface BookPurchaseRecord {
+  id: string;
+  uid: string;
+  bookId: string;
+  bookTitle: string;
+  amountBdt: number;
+  paymentMethod: BillingMethod;
+  paymentReference: string;
+  paymentStatus: BookPaymentStatus;
+  buyerName: string;
+  buyerEmail: string;
+  buyerPhone: string;
   verifiedByEmail: string;
   adminNote: string;
   purchaseDate: string;

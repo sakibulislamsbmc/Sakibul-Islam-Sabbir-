@@ -401,6 +401,59 @@ service cloud.firestore {
       data.updatedAt is timestamp;
     }
 
+    // Validation Blueprint: BookPurchase (/bookPurchases/{purchaseId})
+    function isValidBookPurchase(data) {
+      return data.keys().hasAll([
+        'uid',
+        'bookId',
+        'bookTitle',
+        'amountBdt',
+        'paymentMethod',
+        'paymentReference',
+        'paymentStatus',
+        'buyerName',
+        'buyerEmail',
+        'buyerPhone',
+        'verifiedByEmail',
+        'adminNote',
+        'purchaseDate',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid',
+        'bookId',
+        'bookTitle',
+        'amountBdt',
+        'paymentMethod',
+        'paymentReference',
+        'paymentStatus',
+        'buyerName',
+        'buyerEmail',
+        'buyerPhone',
+        'verifiedByEmail',
+        'adminNote',
+        'purchaseDate',
+        'createdAt',
+        'updatedAt'
+      ]) &&
+      data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$') &&
+      data.bookId is string && data.bookId.size() >= 2 && data.bookId.size() <= 100 && data.bookId.matches('^[a-z0-9\\-]+$') &&
+      data.bookTitle is string && data.bookTitle.size() >= 2 && data.bookTitle.size() <= 150 &&
+      (data.amountBdt is int || data.amountBdt is float) && data.amountBdt >= 50 && data.amountBdt <= 50000 &&
+      isValidBillingMethod(data.paymentMethod) &&
+      data.paymentReference is string && data.paymentReference.size() >= 3 && data.paymentReference.size() <= 100 &&
+      data.paymentStatus is string && data.paymentStatus in ['Pending Verification', 'Verified', 'Rejected'] &&
+      data.buyerName is string && data.buyerName.size() >= 1 && data.buyerName.size() <= 100 &&
+      data.buyerEmail is string && data.buyerEmail.size() >= 3 && data.buyerEmail.size() <= 150 &&
+      data.buyerPhone is string && data.buyerPhone.size() >= 5 && data.buyerPhone.size() <= 40 &&
+      data.verifiedByEmail is string && data.verifiedByEmail.size() >= 0 && data.verifiedByEmail.size() <= 150 &&
+      data.adminNote is string && data.adminNote.size() >= 0 && data.adminNote.size() <= 300 &&
+      data.purchaseDate is string && data.purchaseDate.size() >= 8 && data.purchaseDate.size() <= 32 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
     // Collection: /users/{userId}
     match /users/{userId} {
       allow get: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId;
@@ -582,6 +635,66 @@ service cloud.firestore {
             ])
           ) ||
           // Action 3: Primary Admin (sakibulislamsbmc@gmail.com) verifies or rejects submitted payment
+          (
+            isCourseAdmin() &&
+            incoming().verifiedByEmail == request.auth.token.email &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'paymentStatus',
+              'verifiedByEmail',
+              'adminNote',
+              'updatedAt'
+            ])
+          )
+        );
+      allow delete: if false;
+    }
+
+    // Collection: /bookPurchases/{purchaseId}
+    match /bookPurchases/{purchaseId} {
+      allow get: if isVerifiedUser() && isValidId(purchaseId) && (existing().uid == request.auth.uid || isCourseAdmin());
+      allow list: if isVerifiedUser() && (existing().uid == request.auth.uid || isCourseAdmin());
+      allow create: if isVerifiedUser() &&
+        isValidId(purchaseId) &&
+        isValidBookPurchase(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().buyerEmail == request.auth.token.email &&
+        purchaseId == request.auth.uid + '_' + incoming().bookId &&
+        incoming().paymentStatus == 'Pending Verification' &&
+        incoming().amountBdt >= 50 &&
+        incoming().verifiedByEmail == '' &&
+        incoming().adminNote == '' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid));
+      allow update: if isVerifiedUser() &&
+        isValidId(purchaseId) &&
+        isValidBookPurchase(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().bookId == existing().bookId &&
+        incoming().bookTitle == existing().bookTitle &&
+        incoming().amountBdt == existing().amountBdt &&
+        incoming().buyerName == existing().buyerName &&
+        incoming().buyerEmail == existing().buyerEmail &&
+        incoming().purchaseDate == existing().purchaseDate &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Action 1: Buyer re-submits rejected payment transaction details (cannot self-approve)
+          (
+            existing().uid == request.auth.uid &&
+            existing().paymentStatus == 'Rejected' &&
+            incoming().paymentStatus == 'Pending Verification' &&
+            incoming().adminNote == '' &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'paymentMethod',
+              'paymentReference',
+              'buyerPhone',
+              'paymentStatus',
+              'adminNote',
+              'updatedAt'
+            ])
+          ) ||
+          // Action 2: Primary Admin ONLY verifies or rejects paid book purchase
           (
             isCourseAdmin() &&
             incoming().verifiedByEmail == request.auth.token.email &&

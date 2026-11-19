@@ -95,9 +95,10 @@ export const WEBSITE_KNOWLEDGE_PROMPT = `
 - 8 Learning Tracks: Understanding Generative AI, Exploring AI Tools, Smart Prompting, AI for Smart Study, AI for Creativity, AI for Productivity, AI for Future Skills, Responsible AI Usage.
 - Ticket Booking: Official registration via SupportKori (https://www.supportkori.com/sakibul756/extras/ai-for-students-workshop-2027-gkam). Participation certificate provided. Guest speaker & additional sponsor slots open.
 
-5. PROJECTS (/projects) & PORTFOLIO (/portfolio):
+5. PROJECTS (/projects), BOOKS (/books) & PORTFOLIO (/portfolio):
 - Website Projects (6): E-Commerce Storefront, EdTech Learning Portal, SaaS Workflow & AI Automation Hub, Creative Studio Agency Platform, Corporate FinTech Advisory Portal, Healthcare & Clinic Booking System.
 - Android Apps (4): Smart Task & Habit Companion, Client Order & Delivery Tracker, Student Learning & Quiz App, Personal Finance & Expense Ledger (Kotlin, Jetpack Compose, Flutter, Firebase).
+- Published Works / Books (/projects#books and /books): Official book authored by Sakibul Islam Sabbir — "মুসলিম হিসেবে আপনার যে দশটি বিষয় জানা প্রয়োজন" (পূর্বমূল্য ৳৮০ কেটে এখন সম্পূর্ণ ফ্রি উন্মুক্ত)। বইটি শুধুমাত্র ওয়েবসাইটের ভেতর সুরক্ষিত ফুল-স্ক্রিন রিডারেই পড়া যায় (অন্য কোনো ব্রাউজারে ওপেন হয় না), পড়ার সুবিধার্থে জুম ইন/আউট ও নাইট মোড আছে, অফলাইনে সেভ করে ইন্টারনেট ছাড়াই পড়া যায় এবং সোশ্যাল মিডিয়াতে লিংক শেয়ার করা যায়।
 - Portfolio (/portfolio): 36 Design Concepts (Brand Identity, Social Media, Thumbnails, Posters, UI Systems) + 4 Long-Form Videos (including Barnoi Lifestyle TVC Ads, Nafees Selim Podcast in As-Sunnah Skill) + Short-Form Vertical Reels.
 
 6. THANKFUL (/thankful):

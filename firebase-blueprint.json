@@ -658,6 +658,122 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "BookPurchase": {
+      "title": "BookPurchase",
+      "description": "Paid ebook purchase orders and manual admin verification state unlocking full PDF reading access.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the buyer.",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "bookId": {
+          "type": "string",
+          "description": "Unique catalog slug of the purchased book.",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "bookTitle": {
+          "type": "string",
+          "description": "Display title of the purchased book.",
+          "minLength": 2,
+          "maxLength": 150
+        },
+        "amountBdt": {
+          "type": "number",
+          "description": "Book price in Bangladeshi Taka (BDT)."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "Payment channel used for the ebook purchase.",
+          "enum": [
+            "bKash",
+            "Nagad",
+            "Dutch-Bangla Bank",
+            "Visa / Mastercard",
+            "PayPal",
+            "Wire Transfer"
+          ]
+        },
+        "paymentReference": {
+          "type": "string",
+          "description": "Transaction ID (TrxID) or bank reference submitted by buyer.",
+          "minLength": 3,
+          "maxLength": 100
+        },
+        "paymentStatus": {
+          "type": "string",
+          "description": "Manual admin verification status controlling full PDF unlock.",
+          "enum": ["Pending Verification", "Verified", "Rejected"]
+        },
+        "buyerName": {
+          "type": "string",
+          "description": "Full name of the buyer.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "buyerEmail": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified Google account email of the buyer.",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "buyerPhone": {
+          "type": "string",
+          "description": "Buyer phone or WhatsApp number.",
+          "minLength": 5,
+          "maxLength": 40
+        },
+        "verifiedByEmail": {
+          "type": "string",
+          "description": "Primary admin email that verified or rejected this book order.",
+          "minLength": 0,
+          "maxLength": 150
+        },
+        "adminNote": {
+          "type": "string",
+          "description": "Optional note from the primary admin.",
+          "minLength": 0,
+          "maxLength": 300
+        },
+        "purchaseDate": {
+          "type": "string",
+          "description": "ISO date when the book order was submitted.",
+          "minLength": 8,
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when book purchase was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when book purchase was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "bookId",
+        "bookTitle",
+        "amountBdt",
+        "paymentMethod",
+        "paymentReference",
+        "paymentStatus",
+        "buyerName",
+        "buyerEmail",
+        "buyerPhone",
+        "verifiedByEmail",
+        "adminNote",
+        "purchaseDate",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -672,6 +788,10 @@
     "/coursePurchases/{purchaseId}": {
       "schema": { "$ref": "#/entities/CoursePurchase" },
       "description": "Course enrollment, payment verification status, and per-user lesson progress records."
+    },
+    "/bookPurchases/{purchaseId}": {
+      "schema": { "$ref": "#/entities/BookPurchase" },
+      "description": "Paid ebook orders submitted by users for manual admin verification to unlock full in-site PDF access."
     },
     "/applications/{applicationId}": {
       "schema": { "$ref": "#/entities/ServiceApplication" },

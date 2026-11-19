@@ -53,6 +53,145 @@ const CHAT_RATE_WINDOW_MS = 60_000;
 const CHAT_RATE_MAX_REQUESTS = 25;
 const chatRateBuckets = new Map<string, number[]>();
 
+const BOOK_PDF_SOURCES: Record<string, { driveFileId: string }> = {
+  "muslim-ten-essential-topics": {
+    driveFileId: "1rlVLdKSZzz_HAtHPihRthvIsKPsV0Wd1",
+  },
+};
+
+const BOOK_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour server-side memory cache
+const cachedBookBuffers = new Map<string, { bytes: Uint8Array; fetchedAt: number }>();
+
+async function handleSecureBookStreamRequest(
+  request: Request,
+  pathname: string,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return new Response(JSON.stringify({ error: "Method not allowed." }), {
+      status: 405,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
+  // Block direct browser tab navigation, external embeds, or non-reader requests
+  const readerHeader = request.headers.get("x-bismah-reader");
+  const fetchMode = request.headers.get("sec-fetch-mode");
+  const fetchDest = request.headers.get("sec-fetch-dest");
+  const fetchSite = request.headers.get("sec-fetch-site");
+
+  if (
+    readerHeader !== "internal" ||
+    fetchMode === "navigate" ||
+    fetchDest === "document" ||
+    (fetchSite && fetchSite !== "same-origin" && fetchSite !== "none")
+  ) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "এই বইটি শুধুমাত্র আমাদের অফিসিয়াল ওয়েবসাইটের ভেতর থেকেই পড়া যাবে। অন্য কোনো ব্রাউজারে সরাসরি ওপেন করা অনুমোদিত নয়।",
+      }),
+      {
+        status: 403,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      },
+    );
+  }
+
+  const match = pathname.match(/^\/api\/books\/([a-z0-9-]+)\/stream$/);
+  const bookId = match?.[1];
+  if (!bookId || !BOOK_PDF_SOURCES[bookId]) {
+    return new Response(JSON.stringify({ error: "Book not found." }), {
+      status: 404,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
+  const now = Date.now();
+  const cached = cachedBookBuffers.get(bookId);
+  if (cached && now - cached.fetchedAt < BOOK_CACHE_TTL_MS) {
+    return new Response(cached.bytes as unknown as BodyInit, {
+      status: 200,
+      headers: {
+        "content-type": "application/octet-stream",
+        "content-length": String(cached.bytes.byteLength),
+        "content-disposition": "inline",
+        "cache-control": "private, no-store, no-transform",
+        "x-content-type-options": "nosniff",
+        "x-robots-tag": "noindex, nofollow",
+      },
+    });
+  }
+
+  const source = BOOK_PDF_SOURCES[bookId];
+  const driveUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(source.driveFileId)}`;
+
+  try {
+    const upstream = await fetch(driveUrl, {
+      redirect: "follow",
+      headers: {
+        "user-agent": "Mozilla/5.0 BismahBookReader/1.0",
+      },
+    });
+
+    if (!upstream.ok) {
+      return new Response(
+        JSON.stringify({ error: "বইটি সার্ভার থেকে লোড করা যায়নি। একটু পর আবার চেষ্টা করুন।" }),
+        {
+          status: 502,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        },
+      );
+    }
+
+    const arrayBuf = await upstream.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuf);
+
+    // Validate PDF magic signature (%PDF-)
+    const isPdf =
+      bytes.length > 5 &&
+      bytes[0] === 0x25 &&
+      bytes[1] === 0x50 &&
+      bytes[2] === 0x44 &&
+      bytes[3] === 0x46 &&
+      bytes[4] === 0x2d;
+
+    if (!isPdf) {
+      return new Response(
+        JSON.stringify({
+          error: "বইয়ের ফাইলটি যাচাই করা যায়নি। অনুগ্রহ করে ফাইলের শেয়ারিং সেটিংস চেক করুন।",
+        }),
+        {
+          status: 502,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        },
+      );
+    }
+
+    cachedBookBuffers.set(bookId, { bytes, fetchedAt: now });
+
+    return new Response(bytes as unknown as BodyInit, {
+      status: 200,
+      headers: {
+        "content-type": "application/octet-stream",
+        "content-length": String(bytes.byteLength),
+        "content-disposition": "inline",
+        "cache-control": "private, no-store, no-transform",
+        "x-content-type-options": "nosniff",
+        "x-robots-tag": "noindex, nofollow",
+      },
+    });
+  } catch (err) {
+    console.error("[/api/books/stream error]", err);
+    return new Response(JSON.stringify({ error: "নেটওয়ার্ক সমস্যার কারণে বইটি লোড করা যায়নি।" }), {
+      status: 502,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+}
+
 function getClientIp(request: Request): string {
   const fwd = request.headers.get("x-forwarded-for");
   if (fwd) return fwd.split(",")[0]?.trim() || "unknown";
@@ -720,6 +859,9 @@ export default {
       }
       if (url.pathname.startsWith("/api/admin/")) {
         return withSecurityHeaders(await handleAdminAuthRequest(request, url.pathname));
+      }
+      if (url.pathname.startsWith("/api/books/")) {
+        return withSecurityHeaders(await handleSecureBookStreamRequest(request, url.pathname));
       }
 
       const handler = await getServerEntry();

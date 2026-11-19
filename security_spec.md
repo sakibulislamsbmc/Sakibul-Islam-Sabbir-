@@ -28,7 +28,11 @@
    - Users can submit workshop registrations, 1-on-1 consultations, certificate requests, custom quotes, or partnership applications with `status == 'Pending Verification'`, `verifiedByEmail == ''`, `adminNote == ''`, and `approvedDate == ''`.
    - `get` and `list` are restricted to owner (`existing().uid == request.auth.uid`) OR primary admin (`isCourseAdmin()`).
    - ONLY the primary admin (`isCourseAdmin()`) can transition `status` to `'Approved'` or `'Rejected'`.
-7. **Website Notices (`WebsiteNotice` at `/notices/{noticeId}`)**:
+7. **Paid Ebook Purchases (`BookPurchase` at `/bookPurchases/{purchaseId}`)**:
+   - Verified Google users submit paid ebook orders with deterministic ID `purchaseId == request.auth.uid + '_' + incoming().bookId`, `buyerEmail == request.auth.token.email`, `amountBdt >= 50`, `paymentStatus == 'Pending Verification'`, `verifiedByEmail == ''`, and `adminNote == ''`.
+   - `get` and `list` are restricted strictly to the buyer (`existing().uid == request.auth.uid`) OR the primary admin (`isCourseAdmin()`).
+   - Buyers can only resubmit payment reference details if `existing().paymentStatus == 'Rejected'` (always resetting to `'Pending Verification'`); ONLY the primary admin (`isCourseAdmin()`) can set `paymentStatus` to `'Verified'` or `'Rejected'`.
+8. **Website Notices (`WebsiteNotice` at `/notices/{noticeId}`)**:
    - Published notices (`isPublished == true`) are publicly readable by verified users; drafts and all write operations (`create`, `update`, `delete`) are strictly restricted to the primary admin (`sakibulislamsbmc@gmail.com`).
    - `actionRoute` must be empty or match `^\/[a-zA-Z0-9\-_\/]*$` to prevent open redirects or `javascript:` URI injection.
 

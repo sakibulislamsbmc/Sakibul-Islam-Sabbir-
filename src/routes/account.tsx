@@ -67,6 +67,7 @@ import {
   submitPaidCourseEnrollment,
   syncVerifiedCourseProgress,
 } from "@/lib/course-purchases";
+import { adminUpdateBookVerification } from "@/lib/book-purchases";
 import {
   APPLICATION_CATEGORIES,
   APPLICATION_METHODS,
@@ -76,6 +77,7 @@ import {
   BILLING_METHODS,
   type BillingMethod,
   type BillingStatus,
+  type BookPurchaseRecord,
   type CoursePurchaseRecord,
   db,
   handleFirestoreError,
@@ -394,18 +396,20 @@ function AccountPage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [coursePurchases, setCoursePurchases] = useState<CoursePurchaseRecord[]>([]);
   const [purchasesLoading, setPurchasesLoading] = useState(false);
+  const [bookPurchases, setBookPurchases] = useState<BookPurchaseRecord[]>([]);
   const [applications, setApplications] = useState<ServiceApplicationRecord[]>([]);
   const [applicationsLoading, setApplicationsLoading] = useState(false);
 
   // Admin Queues state
   const [adminQueuePurchases, setAdminQueuePurchases] = useState<CoursePurchaseRecord[]>([]);
+  const [adminQueueBooks, setAdminQueueBooks] = useState<BookPurchaseRecord[]>([]);
   const [adminQueueOrders, setAdminQueueOrders] = useState<ProjectOrderRecord[]>([]);
   const [adminQueueApplications, setAdminQueueApplications] = useState<ServiceApplicationRecord[]>(
     [],
   );
-  const [adminQueueTab, setAdminQueueTab] = useState<"orders" | "courses" | "applications">(
-    "orders",
-  );
+  const [adminQueueTab, setAdminQueueTab] = useState<
+    "orders" | "courses" | "books" | "applications"
+  >("orders");
   const [adminNoteDrafts, setAdminNoteDrafts] = useState<Record<string, string>>({});
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
@@ -753,6 +757,71 @@ function AccountPage() {
     return () => {
       unsubUser();
       if (unsubAdmin) unsubAdmin();
+    };
+  }, [authReady, user]);
+
+  // Subscribe to authenticated user's Paid Book Purchases (+ all queue for verified primary admin)
+  useEffect(() => {
+    if (!authReady || !user || !user.emailVerified) {
+      setBookPurchases([]);
+      setAdminQueueBooks([]);
+      return;
+    }
+
+    const userBookQuery = query(collection(db, "bookPurchases"), where("uid", "==", user.uid));
+    const unsubUserBooks = onSnapshot(
+      userBookQuery,
+      (snapshot) => {
+        const list: BookPurchaseRecord[] = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          ...(docSnap.data() as Omit<BookPurchaseRecord, "id">),
+        }));
+        list.sort((a, b) => b.purchaseDate.localeCompare(a.purchaseDate));
+        setBookPurchases(list);
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, "bookPurchases");
+      },
+    );
+
+    let unsubAdminBooks: (() => void) | undefined;
+    if (isPrimaryAdminUser(user)) {
+      const adminBookQuery = query(collection(db, "bookPurchases"));
+      unsubAdminBooks = onSnapshot(
+        adminBookQuery,
+        (snapshot) => {
+          const allList: BookPurchaseRecord[] = snapshot.docs.map((docSnap) => ({
+            id: docSnap.id,
+            ...(docSnap.data() as Omit<BookPurchaseRecord, "id">),
+          }));
+          allList.sort((a, b) => {
+            if (
+              a.paymentStatus === "Pending Verification" &&
+              b.paymentStatus !== "Pending Verification"
+            ) {
+              return -1;
+            }
+            if (
+              b.paymentStatus === "Pending Verification" &&
+              a.paymentStatus !== "Pending Verification"
+            ) {
+              return 1;
+            }
+            return b.purchaseDate.localeCompare(a.purchaseDate);
+          });
+          setAdminQueueBooks(allList);
+        },
+        (error) => {
+          handleFirestoreError(error, OperationType.LIST, "bookPurchases");
+        },
+      );
+    } else {
+      setAdminQueueBooks([]);
+    }
+
+    return () => {
+      unsubUserBooks();
+      if (unsubAdminBooks) unsubAdminBooks();
     };
   }, [authReady, user]);
 
@@ -1310,12 +1379,41 @@ function AccountPage() {
       });
       setBannerMessage({
         type: "success",
-        text: `${purchase.studentEmail} — Course status updated to "${nextStatus === "Verified" ? "Approved" : "Rejected"}".`,
+        text: `Course enrollment for ${purchase.studentName} marked as ${nextStatus}.`,
       });
     } catch (error) {
       setBannerMessage({
         type: "error",
-        text: error instanceof Error ? error.message : "Could not update payment status.",
+        text: error instanceof Error ? error.message : "Failed to update course status.",
+      });
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
+  const handleAdminVerifyBook = async (
+    purchase: BookPurchaseRecord,
+    nextStatus: "Verified" | "Rejected",
+  ) => {
+    if (!user || !isAdminUnlocked) return;
+    setVerifyingId(purchase.id);
+    setBannerMessage(null);
+    const note =
+      adminNoteDrafts[purchase.id]?.trim() ||
+      (nextStatus === "Verified"
+        ? "Approved by Primary Admin. Full PDF book access unlocked."
+        : "Transaction ID could not be verified. Please resubmit valid TrxID.");
+
+    try {
+      await adminUpdateBookVerification(user, purchase.id, nextStatus, note);
+      setBannerMessage({
+        type: "success",
+        text: `Book order "${purchase.bookTitle}" for ${purchase.buyerName} marked as ${nextStatus}.`,
+      });
+    } catch (error) {
+      setBannerMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Failed to update book order status.",
       });
     } finally {
       setVerifyingId(null);
@@ -1548,8 +1646,9 @@ function AccountPage() {
     () =>
       adminQueueOrders.filter((o) => o.projectStatus === "Pending Verification").length +
       adminQueuePurchases.filter((p) => p.paymentStatus === "Pending Verification").length +
+      adminQueueBooks.filter((b) => b.paymentStatus === "Pending Verification").length +
       adminQueueApplications.filter((a) => a.status === "Pending Verification").length,
-    [adminQueueOrders, adminQueuePurchases, adminQueueApplications],
+    [adminQueueOrders, adminQueuePurchases, adminQueueBooks, adminQueueApplications],
   );
 
   return (
@@ -2623,6 +2722,80 @@ function AccountPage() {
                         })}
                       </div>
                     )}
+
+                    {/* Purchased Ebooks Library inside Purchases Section */}
+                    {bookPurchases.length > 0 && (
+                      <div className="mt-8 border-t border-border/70 pt-6">
+                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                              Digital Books Library • ই-বুক অর্ডার
+                            </p>
+                            <h3 className="mt-0.5 font-display text-lg font-bold">
+                              My Purchased Books ({bookPurchases.length})
+                            </h3>
+                          </div>
+                          <Link
+                            to="/books"
+                            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-background px-4 text-xs font-semibold text-foreground hover:bg-muted"
+                          >
+                            Open Books Library
+                            <ArrowUpRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+
+                        <div className="space-y-3">
+                          {bookPurchases.map((bookOrder) => {
+                            const isVerified = bookOrder.paymentStatus === "Verified";
+                            const isPending = bookOrder.paymentStatus === "Pending Verification";
+                            return (
+                              <Link
+                                key={bookOrder.id}
+                                to="/books"
+                                className="group flex flex-col justify-between gap-3 rounded-2xl border border-border/80 bg-background/80 p-4 transition-all hover:border-primary/50 sm:flex-row sm:items-center"
+                              >
+                                <div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-display text-base font-bold text-foreground group-hover:underline">
+                                      {bookOrder.bookTitle}
+                                    </span>
+                                    <span
+                                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                                        isVerified
+                                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                          : isPending
+                                            ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                            : "bg-destructive/15 text-destructive"
+                                      }`}
+                                    >
+                                      {isVerified
+                                        ? "Approved • Read PDF"
+                                        : isPending
+                                          ? "Pending Verification"
+                                          : "Rejected"}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 text-xs text-muted-foreground">
+                                    ৳{bookOrder.amountBdt} BDT • {bookOrder.paymentMethod} • Ref:{" "}
+                                    <span className="font-mono">{bookOrder.paymentReference}</span>{" "}
+                                    • {bookOrder.purchaseDate}
+                                  </p>
+                                  {bookOrder.adminNote && (
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      Note: {bookOrder.adminNote}
+                                    </p>
+                                  )}
+                                </div>
+                                <span className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground">
+                                  {isVerified ? "Read PDF Book" : "View Book"}
+                                  <ArrowUpRight className="h-3.5 w-3.5" />
+                                </span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2876,6 +3049,7 @@ function AccountPage() {
                                 <option value="/courses">
                                   Free Quran Learning Course (/courses)
                                 </option>
+                                <option value="/books">Published Books Library (/books)</option>
                                 <option value="/workshop">AI Workshop 2027 (/workshop)</option>
                                 <option value="/projects">
                                   Projects &amp; Courses (/projects)
@@ -3215,6 +3389,23 @@ function AccountPage() {
                           </button>
                           <button
                             type="button"
+                            onClick={() => setAdminQueueTab("books")}
+                            className={`cursor-pointer rounded-full px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-widest transition-all ${
+                              adminQueueTab === "books"
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "border border-border/80 bg-muted/40 text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            Book Orders (
+                            {
+                              adminQueueBooks.filter(
+                                (b) => b.paymentStatus === "Pending Verification",
+                              ).length
+                            }{" "}
+                            Pending)
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setAdminQueueTab("applications")}
                             className={`cursor-pointer rounded-full px-4 py-2 font-mono text-[10px] font-bold uppercase tracking-widest transition-all ${
                               adminQueueTab === "applications"
@@ -3453,6 +3644,111 @@ function AccountPage() {
                                           verifyingId === p.id || p.paymentStatus === "Rejected"
                                         }
                                         onClick={() => handleAdminVerifyCourse(p, "Rejected")}
+                                        className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-destructive/40 px-4 text-[11px] font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                                      >
+                                        <XCircle className="h-3.5 w-3.5" />
+                                        Reject
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+
+                        {adminQueueTab === "books" &&
+                          (adminQueueBooks.length === 0 ? (
+                            <div className="rounded-2xl border border-dashed border-border p-10 text-center text-xs text-muted-foreground">
+                              No paid ebook orders submitted yet.
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {adminQueueBooks.map((b) => (
+                                <div
+                                  key={b.id}
+                                  className="rounded-2xl border border-border/80 bg-background/85 p-5 shadow-xs"
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3">
+                                    <div>
+                                      <p className="font-display text-base font-bold text-foreground">
+                                        {b.buyerName} ·{" "}
+                                        <span className="font-mono text-xs font-normal text-muted-foreground">
+                                          {b.buyerEmail}
+                                        </span>
+                                      </p>
+                                      <p className="mt-0.5 text-xs text-muted-foreground">
+                                        {b.bookTitle} ({b.purchaseDate})
+                                      </p>
+                                    </div>
+                                    <span
+                                      className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-mono text-[10px] font-bold uppercase tracking-wider ${
+                                        b.paymentStatus === "Verified"
+                                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                          : b.paymentStatus === "Pending Verification"
+                                            ? "bg-amber-500/15 text-amber-800 dark:text-amber-200"
+                                            : "bg-destructive/15 text-destructive"
+                                      }`}
+                                    >
+                                      {b.paymentStatus === "Verified"
+                                        ? "Approved • Unlocked"
+                                        : b.paymentStatus}
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                                    <div>
+                                      <span className="text-muted-foreground">Price: </span>
+                                      <strong className="font-mono">৳{b.amountBdt} BDT</strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Method &amp; TrxID:{" "}
+                                      </span>
+                                      <strong className="font-mono">
+                                        {b.paymentMethod} ({b.paymentReference})
+                                      </strong>
+                                    </div>
+                                    <div>
+                                      <span className="text-muted-foreground">Phone: </span>
+                                      <strong className="font-mono">{b.buyerPhone || "N/A"}</strong>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-4 flex flex-col gap-3 border-t border-border/60 pt-3 sm:flex-row sm:items-center">
+                                    <input
+                                      type="text"
+                                      value={adminNoteDrafts[b.id] ?? b.adminNote ?? ""}
+                                      onChange={(e) =>
+                                        setAdminNoteDrafts((prev) => ({
+                                          ...prev,
+                                          [b.id]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Optional admin note for buyer…"
+                                      className="h-9 flex-1 rounded-xl border border-border bg-background px-3 text-xs outline-none focus:border-primary"
+                                    />
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          verifyingId === b.id || b.paymentStatus === "Verified"
+                                        }
+                                        onClick={() => handleAdminVerifyBook(b, "Verified")}
+                                        className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground disabled:opacity-50"
+                                      >
+                                        {verifyingId === b.id ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <CheckCircle2 className="h-3.5 w-3.5" />
+                                        )}
+                                        Approve &amp; Unlock PDF
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={
+                                          verifyingId === b.id || b.paymentStatus === "Rejected"
+                                        }
+                                        onClick={() => handleAdminVerifyBook(b, "Rejected")}
                                         className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-destructive/40 px-4 text-[11px] font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
                                       >
                                         <XCircle className="h-3.5 w-3.5" />

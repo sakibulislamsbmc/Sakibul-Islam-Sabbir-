@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { MobileBottomNav, MobileHeaderMenu } from "@/components/MobileNavigation";
 import { PWAInstallButton } from "@/components/PWAInstallButton";
+import { BooksShowcaseSection } from "@/components/books/BooksShowcaseSection";
+import { BOOKS_CATALOG } from "@/data/books-data";
 import { QURAN_COURSE } from "@/data/courses-data";
 import { GRAPHIC_DESIGN_COURSE } from "@/data/graphic-design-course-data";
 import { EVENT_CONFIG, WORKSHOP_ASSETS } from "@/data/workshop-data";
@@ -264,7 +266,7 @@ const ANDROID_PROJECTS: ProjectShowcaseItem[] = [
 function ProjectsPage() {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "all" | "website" | "android" | "workshop" | "courses"
+    "all" | "website" | "android" | "workshop" | "courses" | "books"
   >("all");
   const [selectedProject, setSelectedProject] = useState<ProjectShowcaseItem | null>(null);
 
@@ -391,7 +393,7 @@ function ProjectsPage() {
                       : "border-border/80 bg-background/40 text-muted-foreground backdrop-blur-md hover:border-foreground/30 hover:text-foreground"
                   }`}
                 >
-                  All Projects (13)
+                  All Projects (14)
                 </button>
                 <button
                   type="button"
@@ -440,6 +442,18 @@ function ProjectsPage() {
                 >
                   <BookOpen className="h-3.5 w-3.5" />
                   04. Courses (2)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("books")}
+                  className={`inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 text-xs font-semibold transition-all duration-150 ${
+                    activeTab === "books"
+                      ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                      : "border-border/80 bg-background/40 text-muted-foreground backdrop-blur-md hover:border-foreground/30 hover:text-foreground"
+                  }`}
+                >
+                  <BookOpen className="h-3.5 w-3.5" />
+                  05. Books ({BOOKS_CATALOG.length})
                 </button>
               </div>
 
@@ -951,6 +965,13 @@ function ProjectsPage() {
                   </div>
                 </Link>
               </div>
+            </section>
+          )}
+
+          {/* PART 5: BOOKS SHOWCASE (Published Works) */}
+          {(activeTab === "all" || activeTab === "books") && (
+            <section id="books" className="scroll-mt-24">
+              <BooksShowcaseSection showStandaloneLink compactTop />
             </section>
           )}
         </div>

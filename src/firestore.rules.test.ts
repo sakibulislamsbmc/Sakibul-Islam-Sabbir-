@@ -126,4 +126,12 @@ describe("Firestore Security Rules — Dirty Dozen Verification", () => {
     expect(rules).toContain("incoming().approvedDate == ''");
     expect(rules).toContain("'approvedDate'");
   });
+
+  it("18. Enforces Pending Verification creation and admin-only unlock on /bookPurchases", () => {
+    const rules = getRules();
+    expect(rules).toContain("function isValidBookPurchase(data)");
+    expect(rules).toContain("match /bookPurchases/{purchaseId}");
+    expect(rules).toContain("purchaseId == request.auth.uid + '_' + incoming().bookId");
+    expect(rules).toContain("incoming().amountBdt >= 50");
+  });
 });
