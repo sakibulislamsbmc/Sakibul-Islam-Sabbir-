@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, Copy, Link2, Share2, X } from "lucide-react";
 
-import type { BookItem } from "../../data/books-data";
+import { getBookSocialImagePath, type BookItem } from "../../data/books-data";
 
 interface BookShareModalProps {
   book: BookItem | null;
@@ -15,11 +15,15 @@ export function BookShareModal({ book, onClose }: BookShareModalProps) {
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const shareUrl = `${origin}/books?book=${encodeURIComponent(book.slug)}`;
-  const shareText = `${book.title} — লেখক: ${book.authorBn}। পূর্বমূল্য ৳${book.regularPriceBdt ?? 80} কেটে এখন সম্পূর্ণ ফ্রি পড়ুন ওয়েবসাইটেই:`;
+  const shareText =
+    book.accessType === "free"
+      ? `${book.title} — লেখক: ${book.authorBn}। পূর্বমূল্য ৳${book.regularPriceBdt ?? 80} কেটে এখন সম্পূর্ণ ফ্রি পড়ুন ওয়েবসাইটেই:`
+      : `${book.title} — লেখক: ${book.authorBn}। মাত্র ৳${book.priceBdt} টাকায় অর্ডার করে ওয়েবসাইটের সুরক্ষিত রিডারে পড়ুন:`;
 
   const encodedUrl = encodeURIComponent(shareUrl);
   const encodedText = encodeURIComponent(shareText);
   const encodedFull = encodeURIComponent(`${shareText} ${shareUrl}`);
+  const previewCover = getBookSocialImagePath(book);
 
   const socialChannels = [
     {
@@ -115,14 +119,28 @@ export function BookShareModal({ book, onClose }: BookShareModalProps) {
           </div>
         </div>
 
-        <p className="mt-3 font-['Hind_Siliguri'] text-xs leading-relaxed text-neutral-600 dark:text-muted-foreground">
-          লিংকটি শেয়ার করলে সবাই সরাসরি আমাদের ওয়েবসাইটের সুরক্ষিত রিডারে এসে{" "}
-          <strong className="text-neutral-900 dark:text-foreground">{book.title}</strong> বইটি
-          ফ্রিতে পড়তে পারবেন।
-        </p>
+        {/* Social Media Cover Preview Card */}
+        <div className="mt-4 flex items-center gap-3.5 rounded-2xl border border-neutral-200/80 bg-neutral-50/90 p-3 dark:border-border dark:bg-secondary/35">
+          <img
+            src={previewCover}
+            alt={book.title}
+            className="h-16 w-14 shrink-0 rounded-xl border border-neutral-200 object-cover shadow-xs dark:border-border"
+          />
+          <div className="min-w-0 font-['Hind_Siliguri']">
+            <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-400">
+              Social Link Cover Preview
+            </p>
+            <p className="truncate text-sm font-bold text-neutral-950 dark:text-foreground">
+              {book.title}
+            </p>
+            <p className="mt-0.5 text-[11px] text-neutral-600 dark:text-muted-foreground">
+              শেয়ার করলে এই বইয়ের কাভারটিই প্রিভিউ হিসেবে দেখাবে।
+            </p>
+          </div>
+        </div>
 
         {/* Social Media Channels Grid */}
-        <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
           {socialChannels.map((ch) => (
             <a
               key={ch.name}

@@ -53,18 +53,43 @@ const CHAT_RATE_WINDOW_MS = 60_000;
 const CHAT_RATE_MAX_REQUESTS = 25;
 const chatRateBuckets = new Map<string, number[]>();
 
-const BOOK_PDF_SOURCES: Record<string, { driveFileId: string }> = {
+type BookPdfSource =
+  | { type: "drive"; driveFileId: string }
+  | { type: "local"; fullPath: string; previewPath?: string };
+
+const BOOK_PDF_SOURCES: Record<string, BookPdfSource> = {
   "muslim-ten-essential-topics": {
+    type: "drive",
     driveFileId: "1rlVLdKSZzz_HAtHPihRthvIsKPsV0Wd1",
+  },
+  "creative-design-freelance-blueprint": {
+    type: "local",
+    fullPath: "server-assets/books/creative-design-freelance-blueprint-full.pdf",
+    previewPath: "server-assets/books/creative-design-freelance-blueprint-preview.pdf",
   },
 };
 
 const BOOK_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour server-side memory cache
 const cachedBookBuffers = new Map<string, { bytes: Uint8Array; fetchedAt: number }>();
 
+function buildProtectedPdfResponse(bytes: Uint8Array): Response {
+  return new Response(bytes as unknown as BodyInit, {
+    status: 200,
+    headers: {
+      "content-type": "application/octet-stream",
+      "content-length": String(bytes.byteLength),
+      "content-disposition": "inline",
+      "cache-control": "private, no-store, no-transform",
+      "x-content-type-options": "nosniff",
+      "x-robots-tag": "noindex, nofollow",
+    },
+  });
+}
+
 async function handleSecureBookStreamRequest(
   request: Request,
   pathname: string,
+  searchParams: URLSearchParams,
 ): Promise<Response> {
   if (request.method !== "GET") {
     return new Response(JSON.stringify({ error: "Method not allowed." }), {
@@ -102,30 +127,47 @@ async function handleSecureBookStreamRequest(
 
   const match = pathname.match(/^\/api\/books\/([a-z0-9-]+)\/stream$/);
   const bookId = match?.[1];
-  if (!bookId || !BOOK_PDF_SOURCES[bookId]) {
+  const source = bookId ? BOOK_PDF_SOURCES[bookId] : undefined;
+  if (!bookId || !source) {
     return new Response(JSON.stringify({ error: "Book not found." }), {
       status: 404,
       headers: { "content-type": "application/json; charset=utf-8" },
     });
   }
 
+  const isPreview = searchParams.get("mode") === "preview";
+  const cacheKey = `${bookId}:${isPreview ? "preview" : "full"}`;
   const now = Date.now();
-  const cached = cachedBookBuffers.get(bookId);
+  const cached = cachedBookBuffers.get(cacheKey);
   if (cached && now - cached.fetchedAt < BOOK_CACHE_TTL_MS) {
-    return new Response(cached.bytes as unknown as BodyInit, {
-      status: 200,
-      headers: {
-        "content-type": "application/octet-stream",
-        "content-length": String(cached.bytes.byteLength),
-        "content-disposition": "inline",
-        "cache-control": "private, no-store, no-transform",
-        "x-content-type-options": "nosniff",
-        "x-robots-tag": "noindex, nofollow",
-      },
-    });
+    return buildProtectedPdfResponse(cached.bytes);
   }
 
-  const source = BOOK_PDF_SOURCES[bookId];
+  if (source.type === "local") {
+    try {
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const relPath = isPreview && source.previewPath ? source.previewPath : source.fullPath;
+      const absPath = path.resolve(process.cwd(), relPath);
+      if (!fs.existsSync(absPath)) {
+        return new Response(JSON.stringify({ error: "বইয়ের ফাইলটি সার্ভারে পাওয়া যায়নি।" }), {
+          status: 404,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        });
+      }
+      const fileBuf = fs.readFileSync(absPath);
+      const bytes = new Uint8Array(fileBuf.buffer, fileBuf.byteOffset, fileBuf.byteLength);
+      cachedBookBuffers.set(cacheKey, { bytes, fetchedAt: now });
+      return buildProtectedPdfResponse(bytes);
+    } catch (err) {
+      console.error("[/api/books/stream local read error]", err);
+      return new Response(JSON.stringify({ error: "বইটি সার্ভার থেকে লোড করা যায়নি।" }), {
+        status: 500,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+  }
+
   const driveUrl = `https://drive.google.com/uc?export=download&id=${encodeURIComponent(source.driveFileId)}`;
 
   try {
@@ -170,19 +212,8 @@ async function handleSecureBookStreamRequest(
       );
     }
 
-    cachedBookBuffers.set(bookId, { bytes, fetchedAt: now });
-
-    return new Response(bytes as unknown as BodyInit, {
-      status: 200,
-      headers: {
-        "content-type": "application/octet-stream",
-        "content-length": String(bytes.byteLength),
-        "content-disposition": "inline",
-        "cache-control": "private, no-store, no-transform",
-        "x-content-type-options": "nosniff",
-        "x-robots-tag": "noindex, nofollow",
-      },
-    });
+    cachedBookBuffers.set(cacheKey, { bytes, fetchedAt: now });
+    return buildProtectedPdfResponse(bytes);
   } catch (err) {
     console.error("[/api/books/stream error]", err);
     return new Response(JSON.stringify({ error: "নেটওয়ার্ক সমস্যার কারণে বইটি লোড করা যায়নি।" }), {
@@ -190,6 +221,56 @@ async function handleSecureBookStreamRequest(
       headers: { "content-type": "application/json; charset=utf-8" },
     });
   }
+}
+
+function getRequestPublicOrigin(request: Request): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwardedHost || request.headers.get("host")?.trim();
+  if (host) {
+    const proto =
+      forwardedProto ||
+      (host.includes("localhost") || host.startsWith("127.0.0.1") ? "http" : "https");
+    return `${proto}://${host}`;
+  }
+  const envUrl = process.env.APP_URL?.trim();
+  if (envUrl) return envUrl.replace(/\/+$/, "");
+  try {
+    return new URL(request.url).origin;
+  } catch {
+    return "";
+  }
+}
+
+async function resolveAbsoluteSocialMetaUrls(
+  request: Request,
+  response: Response,
+): Promise<Response> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/html")) return response;
+
+  const origin = getRequestPublicOrigin(request);
+  if (!origin) return response;
+
+  const html = await response.text();
+  // Ensure og:image, og:image:secure_url, og:url, and twitter:image always have absolute URLs for Facebook/WhatsApp/Telegram crawlers
+  const updatedHtml = html
+    .replace(
+      /(<meta\b[^>]*(?:property=["']og:(?:image|image:secure_url|url)["']|name=["']twitter:image["'])[^>]*\bcontent=["'])(\/[^"']*)(["'][^>]*>)/gi,
+      `$1${origin}$2$3`,
+    )
+    .replace(
+      /(<meta\b[^>]*\bcontent=["'])(\/[^"']*)(["'][^>]*(?:property=["']og:(?:image|image:secure_url|url)["']|name=["']twitter:image["'])[^>]*>)/gi,
+      `$1${origin}$2$3`,
+    );
+
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  return new Response(updatedHtml, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function getClientIp(request: Request): string {
@@ -861,12 +942,19 @@ export default {
         return withSecurityHeaders(await handleAdminAuthRequest(request, url.pathname));
       }
       if (url.pathname.startsWith("/api/books/")) {
-        return withSecurityHeaders(await handleSecureBookStreamRequest(request, url.pathname));
+        return withSecurityHeaders(
+          await handleSecureBookStreamRequest(request, url.pathname, url.searchParams),
+        );
       }
 
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return withSecurityHeaders(await normalizeCatastrophicSsrResponse(response));
+      const normalized = await normalizeCatastrophicSsrResponse(response);
+      const resolved =
+        url.pathname === "/books" || url.pathname === "/graphic-design-course"
+          ? await resolveAbsoluteSocialMetaUrls(request, normalized)
+          : normalized;
+      return withSecurityHeaders(resolved);
     } catch (error) {
       console.error(error);
       return withSecurityHeaders(

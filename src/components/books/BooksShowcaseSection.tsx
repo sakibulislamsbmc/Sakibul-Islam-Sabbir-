@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
@@ -46,16 +46,21 @@ import { InSitePdfReaderModal } from "./InSitePdfReaderModal";
 interface BooksShowcaseSectionProps {
   showStandaloneLink?: boolean;
   compactTop?: boolean;
+  highlightedBookSlug?: string;
 }
+
+type BookFilterTab = "all" | "free" | "paid";
 
 export function BooksShowcaseSection({
   showStandaloneLink = false,
   compactTop = false,
+  highlightedBookSlug,
 }: BooksShowcaseSectionProps) {
   const [user, setUser] = useState<User | null>(null);
   const [purchasesByBookId, setPurchasesByBookId] = useState<Record<string, BookPurchaseRecord>>(
     {},
   );
+  const [filterTab, setFilterTab] = useState<BookFilterTab>("all");
 
   // Offline saved books metadata from IndexedDB Vault
   const [offlineMap, setOfflineMap] = useState<Record<string, OfflineBookMeta>>({});
@@ -65,11 +70,14 @@ export function BooksShowcaseSection({
 
   // Modals
   const [detailsBook, setDetailsBook] = useState<BookItem | null>(null);
-  const [activeReaderBook, setActiveReaderBook] = useState<BookItem | null>(null);
+  const [activeReaderState, setActiveReaderState] = useState<{
+    book: BookItem;
+    preview: boolean;
+  } | null>(null);
   const [shareBook, setShareBook] = useState<BookItem | null>(null);
   const [orderBook, setOrderBook] = useState<BookItem | null>(null);
 
-  // Order form state (kept ready for future paid books)
+  // Order form state
   const [buyerName, setBuyerName] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<BillingMethod>("bKash");
@@ -81,6 +89,15 @@ export function BooksShowcaseSection({
   const [copiedNumber, setCopiedNumber] = useState(false);
 
   const isAdmin = isPrimaryAdminUser(user);
+
+  const freeCount = useMemo(() => BOOKS_CATALOG.filter((b) => b.accessType === "free").length, []);
+  const paidCount = useMemo(() => BOOKS_CATALOG.filter((b) => b.accessType === "paid").length, []);
+
+  const visibleBooks = useMemo(() => {
+    if (filterTab === "free") return BOOKS_CATALOG.filter((b) => b.accessType === "free");
+    if (filterTab === "paid") return BOOKS_CATALOG.filter((b) => b.accessType === "paid");
+    return BOOKS_CATALOG;
+  }, [filterTab]);
 
   // Load saved offline books index on mount
   useEffect(() => {
@@ -128,7 +145,7 @@ export function BooksShowcaseSection({
     return purchase?.paymentStatus === "Verified";
   }
 
-  function openFullscreenReader(book: BookItem) {
+  function openFullscreenReader(book: BookItem, preview = false) {
     // Request browser Fullscreen inside user click gesture so browsers grant fullscreen smoothly
     if (
       typeof document !== "undefined" &&
@@ -139,7 +156,7 @@ export function BooksShowcaseSection({
         // Fallback to full-viewport overlay on browsers without Fullscreen API (e.g. iOS Safari)
       });
     }
-    setActiveReaderBook(book);
+    setActiveReaderState({ book, preview });
   }
 
   async function handleOfflineToggle(book: BookItem) {
@@ -270,7 +287,7 @@ export function BooksShowcaseSection({
 
   return (
     <div className={compactTop ? "pt-2" : ""}>
-      {/* Sample-Matched Editorial Header */}
+      {/* Editorial Header */}
       <div className="border-b border-neutral-200/80 pb-8 dark:border-border/70">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div className="max-w-2xl">
@@ -284,8 +301,8 @@ export function BooksShowcaseSection({
               </span>
             </h2>
             <p className="mt-4 font-['Hind_Siliguri'] text-base leading-relaxed text-neutral-600 dark:text-muted-foreground sm:text-[17px]">
-              আমার লেখা প্রয়োজনীয় ই-বুকগুলো সুরক্ষিত ফুল-স্ক্রিন রিডারে সরাসরি ওয়েবসাইটের ভেতর থেকেই
-              পড়ুন — জুম ইন/আউট ও অফলাইনে সেভ করে ইন্টারনেট ছাড়াই পড়ার সুবিধাসহ।
+              আমার লেখা ফ্রি ও প্রিমিয়াম ই-বুকগুলো সুরক্ষিত ফুল-স্ক্রিন রিডারে সরাসরি ওয়েবসাইটের
+              ভেতর থেকেই পড়ুন — জুম ইন/আউট, ডানে-বামে ও উপরে-নিচে স্ক্রল এবং অফলাইন রিডিং সুবিধাসহ।
             </p>
           </div>
 
@@ -300,16 +317,56 @@ export function BooksShowcaseSection({
           )}
         </div>
 
-        {/* Security & Offline Feature Bar */}
-        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px] text-neutral-500 dark:text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5">
-            <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            PROTECTED IN-SITE FULLSCREEN READER
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <WifiOff className="h-3.5 w-3.5 text-neutral-600 dark:text-neutral-400" />
-            OFFLINE READING VAULT SUPPORTED
-          </span>
+        {/* Filter Controls & Security Info Row */}
+        <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          {BOOKS_CATALOG.length > 1 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setFilterTab("all")}
+                className={`inline-flex h-9 items-center rounded-xl border px-3.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors ${
+                  filterTab === "all"
+                    ? "border-neutral-950 bg-neutral-950 text-white dark:border-white dark:bg-white dark:text-neutral-950"
+                    : "border-neutral-200 bg-white text-neutral-600 hover:text-neutral-950 dark:border-border dark:bg-card dark:text-muted-foreground dark:hover:text-foreground"
+                }`}
+              >
+                All Books ({BOOKS_CATALOG.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTab("free")}
+                className={`inline-flex h-9 items-center rounded-xl border px-3.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors ${
+                  filterTab === "free"
+                    ? "border-neutral-950 bg-neutral-950 text-white dark:border-white dark:bg-white dark:text-neutral-950"
+                    : "border-neutral-200 bg-white text-neutral-600 hover:text-neutral-950 dark:border-border dark:bg-card dark:text-muted-foreground dark:hover:text-foreground"
+                }`}
+              >
+                Free ({freeCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterTab("paid")}
+                className={`inline-flex h-9 items-center rounded-xl border px-3.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors ${
+                  filterTab === "paid"
+                    ? "border-neutral-950 bg-neutral-950 text-white dark:border-white dark:bg-white dark:text-neutral-950"
+                    : "border-neutral-200 bg-white text-neutral-600 hover:text-neutral-950 dark:border-border dark:bg-card dark:text-muted-foreground dark:hover:text-foreground"
+                }`}
+              >
+                Paid ({paidCount})
+              </button>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px] text-neutral-500 dark:text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              PROTECTED IN-SITE FULLSCREEN READER
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <WifiOff className="h-3.5 w-3.5 text-neutral-600 dark:text-neutral-400" />
+              OFFLINE READING VAULT
+            </span>
+          </div>
         </div>
       </div>
 
@@ -320,15 +377,15 @@ export function BooksShowcaseSection({
         </div>
       )}
 
-      {/* Book Cards Grid — Clean Proportionate Card Sizing */}
+      {/* Book Cards Grid */}
       <div
         className={`mt-10 grid gap-7 ${
-          BOOKS_CATALOG.length === 1
+          visibleBooks.length === 1
             ? "grid-cols-1 sm:max-w-[420px]"
-            : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+            : "grid-cols-1 md:grid-cols-2 lg:max-w-[880px]"
         }`}
       >
-        {BOOKS_CATALOG.map((book) => {
+        {visibleBooks.map((book) => {
           const purchase = purchasesByBookId[book.id];
           const isUnlocked = hasFullAccessForBook(book);
           const isPending =
@@ -339,15 +396,28 @@ export function BooksShowcaseSection({
             book.accessType === "paid" && !isUnlocked && purchase?.paymentStatus === "Rejected";
           const savedOffline = offlineMap[book.id] ?? null;
           const isDownloadingThis = downloadingBookId === book.id;
+          const isHighlighted =
+            highlightedBookSlug === book.slug || highlightedBookSlug === book.id;
 
           return (
             <article
               key={book.id}
-              className="group flex flex-col overflow-hidden rounded-[28px] border border-neutral-200/90 bg-white shadow-[0_6px_28px_-14px_rgba(15,23,42,0.12)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_14px_38px_-14px_rgba(15,23,42,0.18)] dark:border-border dark:bg-card"
+              id={`book-${book.slug}`}
+              className={`group flex flex-col overflow-hidden rounded-[28px] border bg-white shadow-[0_6px_28px_-14px_rgba(15,23,42,0.12)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_14px_38px_-14px_rgba(15,23,42,0.18)] dark:bg-card ${
+                isHighlighted
+                  ? "border-neutral-900 ring-2 ring-neutral-900/15 dark:border-white dark:ring-white/20"
+                  : "border-neutral-200/90 dark:border-border"
+              }`}
             >
               {/* Top Full-Bleed Portrait Book Cover */}
               <div
-                onClick={() => (isUnlocked ? openFullscreenReader(book) : setDetailsBook(book))}
+                onClick={() =>
+                  isUnlocked
+                    ? openFullscreenReader(book, false)
+                    : book.previewStreamUrl
+                      ? openFullscreenReader(book, true)
+                      : setDetailsBook(book)
+                }
                 className="relative cursor-pointer overflow-hidden"
               >
                 <BookCoverArt book={book} unlockedBadge={isUnlocked} />
@@ -391,7 +461,7 @@ export function BooksShowcaseSection({
                   {/* Hairline Divider */}
                   <div className="my-5 border-t border-neutral-200/80 dark:border-border/70" />
 
-                  {/* Price (Struck-through ৳80 + FREE) & DETAILS Row */}
+                  {/* Price & DETAILS Row */}
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500 dark:text-muted-foreground">
@@ -438,12 +508,12 @@ export function BooksShowcaseSection({
                     </button>
                   </div>
 
-                  {/* Primary 2-Button Grid: FULLSCREEN READ + OFFLINE SAVE */}
+                  {/* Primary 2-Button Grid: READ / ORDER + OFFLINE / PREVIEW */}
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     {isUnlocked ? (
                       <button
                         type="button"
-                        onClick={() => openFullscreenReader(book)}
+                        onClick={() => openFullscreenReader(book, false)}
                         className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-neutral-950 px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200"
                       >
                         <span>{book.accessType === "free" ? "READ FREE" : "READ BOOK"}</span>
@@ -469,7 +539,7 @@ export function BooksShowcaseSection({
                       </button>
                     )}
 
-                    {/* Offline Vault Save Button */}
+                    {/* Offline Vault Save (if unlocked) OR Free Preview (if paid & locked) */}
                     {isUnlocked ? (
                       <button
                         type="button"
@@ -497,6 +567,15 @@ export function BooksShowcaseSection({
                             <Download className="h-4 w-4" />
                           </>
                         )}
+                      </button>
+                    ) : book.previewStreamUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => openFullscreenReader(book, true)}
+                        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-neutral-200/90 bg-white px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-900 shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-colors hover:bg-neutral-50 dark:border-border dark:bg-secondary/40 dark:text-foreground dark:hover:bg-secondary/70"
+                      >
+                        <span>PREVIEW</span>
+                        <BookOpen className="h-4 w-4" />
                       </button>
                     ) : (
                       <button
@@ -614,26 +693,46 @@ export function BooksShowcaseSection({
                       onClick={() => {
                         const target = detailsBook;
                         setDetailsBook(null);
-                        openFullscreenReader(target);
+                        openFullscreenReader(target, false);
                       }}
                       className="inline-flex h-11 items-center gap-2 rounded-xl bg-neutral-950 px-5 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-neutral-800 dark:bg-white dark:text-neutral-950"
                     >
                       <Maximize2 className="h-4 w-4" />
-                      <span>READ FULLSCREEN FREE</span>
+                      <span>
+                        {detailsBook.accessType === "free"
+                          ? "READ FULLSCREEN FREE"
+                          : "READ FULL BOOK"}
+                      </span>
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const target = detailsBook;
-                        setDetailsBook(null);
-                        openOrderModal(target);
-                      }}
-                      className="inline-flex h-11 items-center gap-2 rounded-xl bg-neutral-950 px-5 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-neutral-800 dark:bg-white dark:text-neutral-950"
-                    >
-                      <ShoppingCart className="h-4 w-4" />
-                      <span>ORDER — ৳{detailsBook.priceBdt}</span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const target = detailsBook;
+                          setDetailsBook(null);
+                          openOrderModal(target);
+                        }}
+                        className="inline-flex h-11 items-center gap-2 rounded-xl bg-neutral-950 px-5 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-neutral-800 dark:bg-white dark:text-neutral-950"
+                      >
+                        <ShoppingCart className="h-4 w-4" />
+                        <span>ORDER — ৳{detailsBook.priceBdt}</span>
+                      </button>
+                      {detailsBook.previewStreamUrl && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const target = detailsBook;
+                            setDetailsBook(null);
+                            openFullscreenReader(target, true);
+                          }}
+                          className="inline-flex h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-5 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-neutral-900 transition-colors hover:bg-neutral-50 dark:border-border dark:bg-secondary/40 dark:text-foreground"
+                        >
+                          <BookOpen className="h-4 w-4" />
+                          <span>FREE PREVIEW</span>
+                        </button>
+                      )}
+                    </>
                   )}
 
                   <button
@@ -655,7 +754,7 @@ export function BooksShowcaseSection({
         </div>
       )}
 
-      {/* Paid Book Order Modal (ready for future paid books) */}
+      {/* Paid Book Order Modal */}
       {orderBook && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm"
@@ -815,9 +914,10 @@ export function BooksShowcaseSection({
 
       {/* Protected Full-Screen Canvas PDF Reader Modal */}
       <InSitePdfReaderModal
-        book={activeReaderBook}
-        hasFullAccess={activeReaderBook ? hasFullAccessForBook(activeReaderBook) : false}
-        offlineMeta={activeReaderBook ? (offlineMap[activeReaderBook.id] ?? null) : null}
+        book={activeReaderState?.book ?? null}
+        hasFullAccess={activeReaderState ? hasFullAccessForBook(activeReaderState.book) : false}
+        isPreviewMode={activeReaderState?.preview ?? false}
+        offlineMeta={activeReaderState ? (offlineMap[activeReaderState.book.id] ?? null) : null}
         onOfflineStatusChange={(bookId, meta) => {
           setOfflineMap((prev) => {
             const next = { ...prev };
@@ -830,7 +930,8 @@ export function BooksShowcaseSection({
           });
         }}
         onRequestShare={(book) => setShareBook(book)}
-        onClose={() => setActiveReaderBook(null)}
+        onRequestOrder={(book) => openOrderModal(book)}
+        onClose={() => setActiveReaderState(null)}
       />
 
       {/* Social Media Share Modal */}

@@ -393,7 +393,7 @@ function ProjectsPage() {
                       : "border-border/80 bg-background/40 text-muted-foreground backdrop-blur-md hover:border-foreground/30 hover:text-foreground"
                   }`}
                 >
-                  All Projects (14)
+                  All Projects (15)
                 </button>
                 <button
                   type="button"

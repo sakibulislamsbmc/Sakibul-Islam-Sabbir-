@@ -26,7 +26,21 @@ export const Route = createFileRoute("/graphic-design-course")({
           "Official Live Course Masterclass by Sakibul Islam Sabbir. Enroll with Google account verification.",
       },
       { property: "og:type", content: "website" },
+      { property: "og:url", content: "/graphic-design-course" },
+      {
+        property: "og:image",
+        content: "/assets/aistudio/gd-course-thumbnail-BCLr_8Dp__1__8f555a45.png",
+      },
+      {
+        property: "og:image:secure_url",
+        content: "/assets/aistudio/gd-course-thumbnail-BCLr_8Dp__1__8f555a45.png",
+      },
+      { property: "og:image:type", content: "image/png" },
       { name: "twitter:card", content: "summary_large_image" },
+      {
+        name: "twitter:image",
+        content: "/assets/aistudio/gd-course-thumbnail-BCLr_8Dp__1__8f555a45.png",
+      },
     ],
   }),
   component: GraphicDesignCoursePage,
