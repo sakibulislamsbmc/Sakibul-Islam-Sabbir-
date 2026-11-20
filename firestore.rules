@@ -39,6 +39,7 @@ service cloud.firestore {
       return method is string && method.size() <= 40 && method in [
         'bKash',
         'Nagad',
+        'Rocket',
         'Dutch-Bangla Bank',
         'Visa / Mastercard',
         'PayPal',
@@ -50,6 +51,7 @@ service cloud.firestore {
       return method is string && method.size() <= 40 && method in [
         'bKash',
         'Nagad',
+        'Rocket',
         'Dutch-Bangla Bank',
         'Visa / Mastercard',
         'PayPal',
@@ -62,6 +64,7 @@ service cloud.firestore {
       return method is string && method.size() <= 40 && method in [
         'bKash',
         'Nagad',
+        'Rocket',
         'Dutch-Bangla Bank',
         'Visa / Mastercard',
         'PayPal',

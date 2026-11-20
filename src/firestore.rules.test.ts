@@ -133,5 +133,9 @@ describe("Firestore Security Rules — Dirty Dozen Verification", () => {
     expect(rules).toContain("match /bookPurchases/{purchaseId}");
     expect(rules).toContain("purchaseId == request.auth.uid + '_' + incoming().bookId");
     expect(rules).toContain("incoming().amountBdt >= 50");
+    expect(rules).toContain("'bKash'");
+    expect(rules).toContain("'Nagad'");
+    expect(rules).toContain("'Rocket'");
+    expect(rules).toContain("'Dutch-Bangla Bank'");
   });
 });

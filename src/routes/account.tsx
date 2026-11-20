@@ -2724,26 +2724,43 @@ function AccountPage() {
                     )}
 
                     {/* Purchased Ebooks Library inside Purchases Section */}
-                    {bookPurchases.length > 0 && (
-                      <div className="mt-8 border-t border-border/70 pt-6">
-                        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                              Digital Books Library • ই-বুক অর্ডার
-                            </p>
-                            <h3 className="mt-0.5 font-display text-lg font-bold">
-                              My Purchased Books ({bookPurchases.length})
-                            </h3>
-                          </div>
+                    <div className="mt-8 border-t border-border/70 pt-6">
+                      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                            Digital Books Library • ই-বুক অর্ডার (Google Connected)
+                          </p>
+                          <h3 className="mt-0.5 font-display text-lg font-bold">
+                            My Purchased Books ({bookPurchases.length})
+                          </h3>
+                        </div>
+                        <Link
+                          to="/books"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-background px-4 text-xs font-semibold text-foreground hover:bg-muted"
+                        >
+                          Open Books Library
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                        </Link>
+                      </div>
+
+                      {bookPurchases.length === 0 ? (
+                        <div className="rounded-2xl border border-dashed border-border/80 bg-background/50 p-5 text-center font-['Hind_Siliguri']">
+                          <p className="text-sm font-semibold text-foreground">
+                            আপনি এখনো কোনো পেইড ই-বুক অর্ডার করেননি।
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Books সেকশনে গিয়ে প্রিমিয়াম বইয়ের “একটু পড়ে দেখুন” স্যাম্পল পড়ুন এবং
+                            বিকাশ, নগদ, রকেট বা ব্যাংক একাউন্টের মাধ্যমে অর্ডার করুন।
+                          </p>
                           <Link
                             to="/books"
-                            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-border bg-background px-4 text-xs font-semibold text-foreground hover:bg-muted"
+                            className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-xs font-semibold text-primary-foreground"
                           >
-                            Open Books Library
+                            Explore Books &amp; Look Inside
                             <ArrowUpRight className="h-3.5 w-3.5" />
                           </Link>
                         </div>
-
+                      ) : (
                         <div className="space-y-3">
                           {bookPurchases.map((bookOrder) => {
                             const isVerified = bookOrder.paymentStatus === "Verified";
@@ -2752,6 +2769,7 @@ function AccountPage() {
                               <Link
                                 key={bookOrder.id}
                                 to="/books"
+                                search={{ book: bookOrder.bookId }}
                                 className="group flex flex-col justify-between gap-3 rounded-2xl border border-border/80 bg-background/80 p-4 transition-all hover:border-primary/50 sm:flex-row sm:items-center"
                               >
                                 <div>
@@ -2776,7 +2794,7 @@ function AccountPage() {
                                     </span>
                                   </div>
                                   <p className="mt-1 text-xs text-muted-foreground">
-                                    ৳{bookOrder.amountBdt} BDT • {bookOrder.paymentMethod} • Ref:{" "}
+                                    ৳{bookOrder.amountBdt} BDT • {bookOrder.paymentMethod} • TrxID:{" "}
                                     <span className="font-mono">{bookOrder.paymentReference}</span>{" "}
                                     • {bookOrder.purchaseDate}
                                   </p>
@@ -2787,15 +2805,15 @@ function AccountPage() {
                                   )}
                                 </div>
                                 <span className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground">
-                                  {isVerified ? "Read PDF Book" : "View Book"}
+                                  {isVerified ? "Read PDF Book" : "View Order Status"}
                                   <ArrowUpRight className="h-3.5 w-3.5" />
                                 </span>
                               </Link>
                             );
                           })}
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
 

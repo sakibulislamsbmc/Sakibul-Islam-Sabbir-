@@ -61,6 +61,7 @@
           "enum": [
             "bKash",
             "Nagad",
+            "Rocket",
             "Dutch-Bangla Bank",
             "Visa / Mastercard",
             "PayPal",
@@ -161,6 +162,7 @@
           "enum": [
             "bKash",
             "Nagad",
+            "Rocket",
             "Dutch-Bangla Bank",
             "Visa / Mastercard",
             "PayPal",
@@ -317,6 +319,7 @@
           "enum": [
             "bKash",
             "Nagad",
+            "Rocket",
             "Dutch-Bangla Bank",
             "Visa / Mastercard",
             "PayPal",
@@ -562,6 +565,7 @@
           "enum": [
             "bKash",
             "Nagad",
+            "Rocket",
             "Dutch-Bangla Bank",
             "Visa / Mastercard",
             "PayPal",
@@ -692,6 +696,7 @@
           "enum": [
             "bKash",
             "Nagad",
+            "Rocket",
             "Dutch-Bangla Bank",
             "Visa / Mastercard",
             "PayPal",

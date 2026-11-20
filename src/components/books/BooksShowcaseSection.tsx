@@ -5,6 +5,8 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import {
   ArrowRight,
   BookOpen,
+  Building2,
+  Check,
   CheckCircle2,
   Clock,
   Copy,
@@ -12,18 +14,20 @@ import {
   Eye,
   Loader2,
   Lock,
+  LogIn,
   Maximize2,
   Share2,
   ShieldCheck,
   ShoppingCart,
+  Smartphone,
+  UserCheck,
   WifiOff,
   X,
 } from "lucide-react";
 
-import { BOOKS_CATALOG, BOOK_PAYMENT_ACCOUNT, type BookItem } from "../../data/books-data";
+import { BOOKS_CATALOG, BOOK_PAYMENT_CHANNELS, type BookItem } from "../../data/books-data";
 import {
   auth,
-  BILLING_METHODS,
   db,
   isPrimaryAdminUser,
   signInWithGoogle,
@@ -40,6 +44,7 @@ import {
   type OfflineBookMeta,
 } from "../../lib/offline-book-storage";
 import { BookCoverArt } from "./BookCoverArt";
+import { BookLookInsideSection } from "./BookLookInsideSection";
 import { BookShareModal } from "./BookShareModal";
 import { InSitePdfReaderModal } from "./InSitePdfReaderModal";
 
@@ -77,7 +82,7 @@ export function BooksShowcaseSection({
   const [shareBook, setShareBook] = useState<BookItem | null>(null);
   const [orderBook, setOrderBook] = useState<BookItem | null>(null);
 
-  // Order form state
+  // Order form state (Google Account connected + bKash/Nagad/Rocket/Bank Account)
   const [buyerName, setBuyerName] = useState("");
   const [buyerPhone, setBuyerPhone] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<BillingMethod>("bKash");
@@ -86,18 +91,22 @@ export function BooksShowcaseSection({
   const [signingIn, setSigningIn] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderSuccessMessage, setOrderSuccessMessage] = useState<string | null>(null);
-  const [copiedNumber, setCopiedNumber] = useState(false);
+  const [copiedChannelKey, setCopiedChannelKey] = useState<string | null>(null);
 
   const isAdmin = isPrimaryAdminUser(user);
 
+  const paidBooks = useMemo(() => BOOKS_CATALOG.filter((b) => b.accessType === "paid"), []);
   const freeCount = useMemo(() => BOOKS_CATALOG.filter((b) => b.accessType === "free").length, []);
-  const paidCount = useMemo(() => BOOKS_CATALOG.filter((b) => b.accessType === "paid").length, []);
+  const paidCount = paidBooks.length;
 
   const visibleBooks = useMemo(() => {
     if (filterTab === "free") return BOOKS_CATALOG.filter((b) => b.accessType === "free");
     if (filterTab === "paid") return BOOKS_CATALOG.filter((b) => b.accessType === "paid");
     return BOOKS_CATALOG;
   }, [filterTab]);
+
+  const activeChannel =
+    BOOK_PAYMENT_CHANNELS.find((c) => c.method === paymentMethod) ?? BOOK_PAYMENT_CHANNELS[0];
 
   // Load saved offline books index on mount
   useEffect(() => {
@@ -211,15 +220,17 @@ export function BooksShowcaseSection({
     if (existing) {
       setBuyerName(existing.buyerName || user?.displayName || "");
       setBuyerPhone(existing.buyerPhone || "");
-      setPaymentMethod(existing.paymentMethod || "bKash");
+      const validChannel = BOOK_PAYMENT_CHANNELS.some((c) => c.method === existing.paymentMethod);
+      setPaymentMethod(validChannel ? existing.paymentMethod : "bKash");
       setPaymentReference(existing.paymentStatus === "Rejected" ? "" : existing.paymentReference);
     } else {
       setBuyerName(user?.displayName || "");
+      setPaymentMethod("bKash");
       setPaymentReference("");
     }
   }
 
-  async function handleGoogleLoginForOrder() {
+  async function handleGoogleSignIn() {
     setSigningIn(true);
     setOrderError(null);
     try {
@@ -241,7 +252,7 @@ export function BooksShowcaseSection({
     if (!orderBook) return;
     if (!user || !user.emailVerified) {
       setOrderError(
-        "বই অর্ডার করার জন্য প্রথমে আপনার ভেরিফায়েড Google অ্যাকাউন্ট দিয়ে সাইন-ইন করুন।",
+        "পেইড বই অর্ডার করার জন্য প্রথমে আপনার ভেরিফায়েড Google অ্যাকাউন্ট দিয়ে সাইন-ইন করুন।",
       );
       return;
     }
@@ -263,7 +274,7 @@ export function BooksShowcaseSection({
         );
       } else {
         setOrderSuccessMessage(
-          "আপনার অর্ডার ও Transaction ID সফলভাবে জমা হয়েছে (Pending Verification)। অ্যাডমিন ভেরিফিকেশনের পরপরই সম্পূর্ণ বইটি এখানে আনলক হয়ে যাবে।",
+          "আপনার অর্ডার ও Transaction ID সফলভাবে জমা হয়েছে (Pending Verification)। অ্যাডমিন TrxID মিলিয়ে অ্যাপ্রুভ করলেই আপনার গুগল একাউন্টে সম্পূর্ণ বইটি আনলক হয়ে যাবে।",
         );
       }
     } catch (err) {
@@ -275,15 +286,29 @@ export function BooksShowcaseSection({
     }
   }
 
-  async function handleCopyPaymentNumber() {
+  async function handleCopyChannelValue(key: string, value: string) {
     try {
-      await navigator.clipboard.writeText(BOOK_PAYMENT_ACCOUNT.bkashNumber);
-      setCopiedNumber(true);
-      window.setTimeout(() => setCopiedNumber(false), 2000);
+      await navigator.clipboard.writeText(value);
+      setCopiedChannelKey(key);
+      window.setTimeout(() => setCopiedChannelKey(null), 2000);
     } catch {
       // Ignore clipboard failure
     }
   }
+
+  const orderExistingRecord = orderBook ? purchasesByBookId[orderBook.id] : undefined;
+  const orderIsVerified = orderBook ? hasFullAccessForBook(orderBook) : false;
+  const orderIsPending =
+    Boolean(orderBook && !orderIsVerified) &&
+    orderExistingRecord?.paymentStatus === "Pending Verification";
+  const orderIsRejected =
+    Boolean(orderBook && !orderIsVerified) && orderExistingRecord?.paymentStatus === "Rejected";
+
+  const ownedPaidCount = paidBooks.filter((b) => hasFullAccessForBook(b)).length;
+  const pendingPaidCount = paidBooks.filter(
+    (b) =>
+      !hasFullAccessForBook(b) && purchasesByBookId[b.id]?.paymentStatus === "Pending Verification",
+  ).length;
 
   return (
     <div className={compactTop ? "pt-2" : ""}>
@@ -302,7 +327,12 @@ export function BooksShowcaseSection({
             </h2>
             <p className="mt-4 font-['Hind_Siliguri'] text-base leading-relaxed text-neutral-600 dark:text-muted-foreground sm:text-[17px]">
               আমার লেখা ফ্রি ও প্রিমিয়াম ই-বুকগুলো সুরক্ষিত ফুল-স্ক্রিন রিডারে সরাসরি ওয়েবসাইটের
-              ভেতর থেকেই পড়ুন — জুম ইন/আউট, ডানে-বামে ও উপরে-নিচে স্ক্রল এবং অফলাইন রিডিং সুবিধাসহ।
+              ভেতর থেকেই পড়ুন। পেইড বই কেনার আগে{" "}
+              <strong className="font-semibold text-neutral-900 dark:text-foreground">
+                “একটু পড়ে দেখুন”
+              </strong>{" "}
+              অংশে ফ্রি স্যাম্পল পড়ে Google অ্যাকাউন্ট দিয়ে বিকাশ, নগদ, রকেট বা ব্যাংক একাউন্টে
+              অর্ডার করতে পারবেন।
             </p>
           </div>
 
@@ -317,8 +347,81 @@ export function BooksShowcaseSection({
           )}
         </div>
 
+        {/* Google Account Connected Status Bar */}
+        <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-neutral-200/90 bg-white/90 px-4 py-3.5 shadow-xs dark:border-border dark:bg-card/80 sm:flex-row sm:items-center sm:justify-between">
+          {user ? (
+            <>
+              <div className="flex min-w-0 items-center gap-3">
+                {user.photoURL ? (
+                  <img
+                    src={user.photoURL}
+                    alt={user.displayName || "Account"}
+                    referrerPolicy="no-referrer"
+                    className="h-10 w-10 shrink-0 rounded-full border border-neutral-200 object-cover dark:border-border"
+                  />
+                ) : (
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-neutral-950 text-white dark:bg-white dark:text-neutral-950">
+                    <UserCheck className="h-4 w-4" />
+                  </div>
+                )}
+                <div className="min-w-0 font-['Hind_Siliguri']">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-sm font-bold text-neutral-950 dark:text-foreground">
+                      {user.displayName || "Google Account Connected"}
+                    </p>
+                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Google Connected
+                    </span>
+                  </div>
+                  <p className="truncate text-xs text-neutral-500 dark:text-muted-foreground">
+                    {user.email} • আনলকড পেইড বই: {ownedPaidCount}টি
+                    {pendingPaidCount > 0 ? ` • ভেরিফিকেশন পেন্ডিং: ${pendingPaidCount}টি` : ""}
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/account"
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-neutral-200 bg-neutral-50 px-3.5 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-neutral-800 transition-colors hover:bg-neutral-100 dark:border-border dark:bg-secondary/50 dark:text-foreground"
+              >
+                <span>My Purchases</span>
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center gap-3 font-['Hind_Siliguri']">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-neutral-950 text-white dark:bg-white dark:text-neutral-950">
+                  <ShieldCheck className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-neutral-950 dark:text-foreground">
+                    পেইড বই কেনার জন্য আপনার Google অ্যাকাউন্ট কানেক্ট করুন
+                  </p>
+                  <p className="text-xs text-neutral-600 dark:text-muted-foreground">
+                    Sign in with Google করলে আপনার সব কেনা বই অ্যাকাউন্টে আজীবন সেভ ও সিঙ্ক থাকবে।
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={signingIn}
+                onClick={handleGoogleSignIn}
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-neutral-950 px-4 text-xs font-semibold text-white transition-colors hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-950"
+              >
+                {signingIn ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <LogIn className="h-3.5 w-3.5" />
+                )}
+                <span>{signingIn ? "Signing in..." : "Sign in with Google"}</span>
+              </button>
+            </>
+          )}
+        </div>
+
         {/* Filter Controls & Security Info Row */}
-        <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           {BOOKS_CATALOG.length > 1 && (
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -360,7 +463,7 @@ export function BooksShowcaseSection({
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-[11px] text-neutral-500 dark:text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-              PROTECTED IN-SITE FULLSCREEN READER
+              bKash • Nagad • Rocket • Bank A/C
             </span>
             <span className="inline-flex items-center gap-1.5">
               <WifiOff className="h-3.5 w-3.5 text-neutral-600 dark:text-neutral-400" />
@@ -421,6 +524,17 @@ export function BooksShowcaseSection({
                 className="relative cursor-pointer overflow-hidden"
               >
                 <BookCoverArt book={book} unlockedBadge={isUnlocked} />
+
+                {/* Rokomari / Wafilife-Style "একটু পড়ে দেখুন" Floating Cover Tag for Paid Books */}
+                {book.accessType === "paid" && !isUnlocked && book.previewStreamUrl && (
+                  <div className="pointer-events-none absolute top-4 right-4 z-10">
+                    <span className="inline-flex items-center gap-1.5 rounded-xl border border-white/30 bg-neutral-950/75 px-3 py-1.5 font-['Hind_Siliguri'] text-[11px] font-bold text-amber-300 shadow-lg backdrop-blur-md">
+                      <BookOpen className="h-3.5 w-3.5" />
+                      একটু পড়ে দেখুন
+                    </span>
+                  </div>
+                )}
+
                 {savedOffline && (
                   <div className="pointer-events-none absolute top-4 right-4 z-10">
                     <span className="inline-flex items-center gap-1 rounded-xl bg-emerald-600/95 px-2.5 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-white shadow-sm">
@@ -441,18 +555,20 @@ export function BooksShowcaseSection({
                 </p>
 
                 {isPending && (
-                  <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                    <Clock className="h-3.5 w-3.5 shrink-0" />
-                    <span className="font-['Hind_Siliguri']">
-                      অর্ডার পেন্ডিং ভেরিফিকেশন — অ্যাডমিন অ্যাপ্রুভ করলেই বইটি আনলক হবে
+                  <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                    <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span className="font-['Hind_Siliguri'] leading-relaxed">
+                      <strong>Pending Verification</strong> ({purchase?.paymentMethod} • TrxID:{" "}
+                      <span className="font-mono">{purchase?.paymentReference}</span>) — অ্যাডমিন
+                      যাচাই করে অ্যাপ্রুভ করলেই বইটি আনলক হবে।
                     </span>
                   </div>
                 )}
                 {isRejected && (
-                  <div className="mt-3 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
-                    <Lock className="h-3.5 w-3.5 shrink-0" />
-                    <span className="font-['Hind_Siliguri']">
-                      TrxID ভেরিফাই হয়নি — সঠিক TrxID দিয়ে আবার সাবমিট করুন
+                  <div className="mt-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-medium text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+                    <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span className="font-['Hind_Siliguri'] leading-relaxed">
+                      TrxID ভেরিফাই হয়নি — সঠিক TrxID দিয়ে আবার সাবমিট করুন।
                     </span>
                   </div>
                 )}
@@ -508,7 +624,7 @@ export function BooksShowcaseSection({
                     </button>
                   </div>
 
-                  {/* Primary 2-Button Grid: READ / ORDER + OFFLINE / PREVIEW */}
+                  {/* Primary 2-Button Grid: READ / ORDER + OFFLINE / একটু পড়ে দেখুন */}
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     {isUnlocked ? (
                       <button
@@ -523,7 +639,7 @@ export function BooksShowcaseSection({
                       <button
                         type="button"
                         onClick={() => openOrderModal(book)}
-                        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-neutral-900 px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-300 transition-colors hover:bg-neutral-800"
+                        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-neutral-900 px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-300 transition-colors hover:bg-neutral-800"
                       >
                         <span>PENDING</span>
                         <Clock className="h-4 w-4" />
@@ -532,14 +648,14 @@ export function BooksShowcaseSection({
                       <button
                         type="button"
                         onClick={() => openOrderModal(book)}
-                        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-neutral-950 px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200"
+                        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-neutral-950 px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-neutral-800 dark:bg-white dark:text-neutral-950 dark:hover:bg-neutral-200"
                       >
                         <span>{isRejected ? "RE-ORDER" : "ORDER"}</span>
                         <ShoppingCart className="h-4 w-4" />
                       </button>
                     )}
 
-                    {/* Offline Vault Save (if unlocked) OR Free Preview (if paid & locked) */}
+                    {/* Offline Vault Save (if unlocked) OR "একটু পড়ে দেখুন" (if paid & locked) */}
                     {isUnlocked ? (
                       <button
                         type="button"
@@ -572,10 +688,10 @@ export function BooksShowcaseSection({
                       <button
                         type="button"
                         onClick={() => openFullscreenReader(book, true)}
-                        className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-neutral-200/90 bg-white px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-900 shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-colors hover:bg-neutral-50 dark:border-border dark:bg-secondary/40 dark:text-foreground dark:hover:bg-secondary/70"
+                        className="inline-flex h-12 items-center justify-center gap-1.5 rounded-xl border border-amber-300/90 bg-amber-50/80 px-3 font-['Hind_Siliguri'] text-xs font-bold text-amber-900 shadow-[0_2px_8px_rgba(15,23,42,0.05)] transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200 dark:hover:bg-amber-500/25"
                       >
-                        <span>PREVIEW</span>
-                        <BookOpen className="h-4 w-4" />
+                        <BookOpen className="h-4 w-4 shrink-0" />
+                        <span>একটু পড়ে দেখুন</span>
                       </button>
                     ) : (
                       <button
@@ -604,6 +720,16 @@ export function BooksShowcaseSection({
           );
         })}
       </div>
+
+      {/* Rokomari / Wafilife-Style "একটু পড়ে দেখুন" (Look Inside) Sample Pages Section for Paid Books */}
+      <BookLookInsideSection
+        paidBooks={paidBooks}
+        isBookUnlocked={hasFullAccessForBook}
+        getBookStatus={(b) => purchasesByBookId[b.id]?.paymentStatus ?? null}
+        onOpenPdfPreview={(b) => openFullscreenReader(b, true)}
+        onOpenFullReader={(b) => openFullscreenReader(b, false)}
+        onOrderBook={(b) => openOrderModal(b)}
+      />
 
       {/* Book Details Modal */}
       {detailsBook && (
@@ -672,15 +798,27 @@ export function BooksShowcaseSection({
                   {detailsBook.fullSynopsis}
                 </p>
 
+                {/* Table of Contents inside Details Modal */}
                 <div className="mt-5">
                   <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-neutral-500 dark:text-muted-foreground">
-                    Highlights
+                    সূচিপত্র • Table of Contents
                   </p>
                   <ul className="mt-2 space-y-1.5 text-sm text-neutral-800 dark:text-foreground">
-                    {detailsBook.highlights.map((hl) => (
-                      <li key={hl} className="flex items-start gap-2">
-                        <CheckCircle2 className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span>{hl}</span>
+                    {detailsBook.tableOfContents.map((ch, idx) => (
+                      <li key={ch} className="flex items-start justify-between gap-2">
+                        <span className="flex items-start gap-2">
+                          <CheckCircle2 className="mt-1 h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          <span>{ch}</span>
+                        </span>
+                        {detailsBook.accessType === "paid" &&
+                          !hasFullAccessForBook(detailsBook) &&
+                          (idx === 0 ? (
+                            <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 font-mono text-[9px] font-bold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
+                              SAMPLE
+                            </span>
+                          ) : (
+                            <Lock className="mt-1 h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                          ))}
                       </li>
                     ))}
                   </ul>
@@ -726,10 +864,10 @@ export function BooksShowcaseSection({
                             setDetailsBook(null);
                             openFullscreenReader(target, true);
                           }}
-                          className="inline-flex h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-5 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-neutral-900 transition-colors hover:bg-neutral-50 dark:border-border dark:bg-secondary/40 dark:text-foreground"
+                          className="inline-flex h-11 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-5 font-['Hind_Siliguri'] text-xs font-bold text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
                         >
                           <BookOpen className="h-4 w-4" />
-                          <span>FREE PREVIEW</span>
+                          <span>একটু পড়ে দেখুন</span>
                         </button>
                       )}
                     </>
@@ -754,16 +892,16 @@ export function BooksShowcaseSection({
         </div>
       )}
 
-      {/* Paid Book Order Modal */}
+      {/* Paid Book Checkout Modal (Google Connected + bKash / Nagad / Rocket / Bank Account) */}
       {orderBook && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           onClick={() => setOrderBook(null)}
         >
           <div
-            className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-[28px] border border-neutral-200 bg-white p-6 shadow-2xl dark:border-border dark:bg-card sm:p-7"
+            className="relative max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-[28px] border border-neutral-200 bg-white p-6 shadow-2xl dark:border-border dark:bg-card sm:p-7"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -776,7 +914,7 @@ export function BooksShowcaseSection({
             </button>
 
             <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-              PAID EBOOK ORDER • BDT
+              PAID EBOOK CHECKOUT • GOOGLE ACCOUNT CONNECTED
             </p>
             <h3 className="mt-1.5 font-['Hind_Siliguri'] text-2xl font-bold text-neutral-950 dark:text-foreground">
               {orderBook.title}
@@ -786,127 +924,354 @@ export function BooksShowcaseSection({
               <strong className="font-['Outfit'] text-base font-bold text-neutral-950 dark:text-foreground">
                 ৳{orderBook.priceBdt}
               </strong>{" "}
-              (এককালীন পেমেন্ট • লাইফটাইম ইন-সাইট এক্সেস)
+              (এককালীন পেমেন্ট • অ্যাডমিন ভেরিফিকেশনের পর লাইফটাইম এক্সেস)
             </p>
 
-            <div className="mt-5 rounded-2xl border border-neutral-200 bg-neutral-50 p-4 dark:border-border dark:bg-secondary/30">
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                    bKash / Nagad Personal (Send Money)
-                  </p>
-                  <p className="mt-1 font-mono text-base font-bold tabular-nums text-neutral-950 dark:text-foreground">
-                    {BOOK_PAYMENT_ACCOUNT.bkashNumber}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCopyPaymentNumber}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 hover:bg-neutral-100 dark:border-border dark:bg-card dark:text-foreground"
+            {/* 3-Step Purchase & Verification Progress Stepper */}
+            <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border border-neutral-200/80 bg-neutral-50/80 p-3 font-['Hind_Siliguri'] text-[11px] dark:border-border dark:bg-secondary/25">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold ${
+                    user
+                      ? "bg-emerald-600 text-white"
+                      : "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950"
+                  }`}
                 >
-                  <Copy className="h-3.5 w-3.5" />
-                  <span>{copiedNumber ? "Copied" : "Copy"}</span>
-                </button>
+                  {user ? "✓" : "1"}
+                </span>
+                <span className="font-semibold text-neutral-800 dark:text-foreground">
+                  Google লগইন
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold ${
+                    orderIsPending || orderIsVerified
+                      ? "bg-emerald-600 text-white"
+                      : user
+                        ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-950"
+                        : "bg-neutral-200 text-neutral-500 dark:bg-secondary"
+                  }`}
+                >
+                  {orderIsPending || orderIsVerified ? "✓" : "2"}
+                </span>
+                <span className="font-semibold text-neutral-800 dark:text-foreground">
+                  TrxID সাবমিট
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full font-mono text-[10px] font-bold ${
+                    orderIsVerified
+                      ? "bg-emerald-600 text-white"
+                      : orderIsPending
+                        ? "bg-amber-500 text-white"
+                        : "bg-neutral-200 text-neutral-500 dark:bg-secondary"
+                  }`}
+                >
+                  {orderIsVerified ? "✓" : "3"}
+                </span>
+                <span className="font-semibold text-neutral-800 dark:text-foreground">
+                  অ্যাডমিন আনলক
+                </span>
               </div>
             </div>
 
             {!user ? (
-              <div className="mt-6 rounded-2xl border border-neutral-200 p-5 text-center dark:border-border">
-                <ShieldCheck className="mx-auto h-8 w-8 text-neutral-800 dark:text-foreground" />
-                <h4 className="mt-2 font-['Hind_Siliguri'] text-base font-bold">
-                  Google অ্যাকাউন্ট দিয়ে সাইন-ইন করুন
+              <div className="mt-5 rounded-2xl border border-neutral-200 bg-neutral-50/70 p-6 text-center dark:border-border dark:bg-secondary/20">
+                <ShieldCheck className="mx-auto h-9 w-9 text-neutral-900 dark:text-foreground" />
+                <h4 className="mt-2.5 font-['Hind_Siliguri'] text-lg font-bold text-neutral-950 dark:text-foreground">
+                  প্রথমে Sign in with Google করুন
                 </h4>
-                <button
-                  type="button"
-                  disabled={signingIn}
-                  onClick={handleGoogleLoginForOrder}
-                  className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 text-xs font-semibold text-white transition-colors hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-950"
-                >
-                  <span>{signingIn ? "Signing in..." : "Continue with Google"}</span>
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleOrderSubmit} className="mt-5 space-y-4">
-                <div>
-                  <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                    Your Full Name
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={buyerName}
-                    onChange={(e) => setBuyerName(e.target.value)}
-                    placeholder="আপনার পূর্ণ নাম"
-                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-sm text-neutral-950 outline-none focus:border-neutral-900 dark:border-border dark:bg-background dark:text-foreground"
-                  />
-                </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                      Payment Method
-                    </label>
-                    <select
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value as BillingMethod)}
-                      className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm text-neutral-950 outline-none focus:border-neutral-900 dark:border-border dark:bg-background dark:text-foreground"
-                    >
-                      {BILLING_METHODS.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                      Mobile / WhatsApp
-                    </label>
-                    <input
-                      type="tel"
-                      required
-                      value={buyerPhone}
-                      onChange={(e) => setBuyerPhone(e.target.value)}
-                      placeholder="01XXXXXXXXX"
-                      className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-sm text-neutral-950 outline-none focus:border-neutral-900 dark:border-border dark:bg-background dark:text-foreground"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
-                    Transaction ID (TrxID)
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={paymentReference}
-                    onChange={(e) => setPaymentReference(e.target.value)}
-                    placeholder="যেমন: BK9X4T2M81"
-                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3.5 font-mono text-sm text-neutral-950 outline-none focus:border-neutral-900 dark:border-border dark:bg-background dark:text-foreground"
-                  />
-                </div>
+                <p className="mt-1 font-['Hind_Siliguri'] text-xs leading-relaxed text-neutral-600 dark:text-muted-foreground">
+                  বই কেনার অর্ডারটি আপনার Google অ্যাকাউন্টের সাথে সরাসরি যুক্ত হবে। অ্যাডমিন
+                  পেমেন্ট ভেরিফাই করলেই এই অ্যাকাউন্ট থেকে যেকোনো ডিভাইসে বইটি পড়তে পারবেন।
+                </p>
                 {orderError && (
-                  <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 font-['Hind_Siliguri'] text-xs font-medium text-rose-700">
+                  <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 font-['Hind_Siliguri'] text-xs font-medium text-rose-700">
                     {orderError}
                   </p>
                 )}
-                {orderSuccessMessage && (
-                  <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 font-['Hind_Siliguri'] text-xs font-medium text-emerald-800">
-                    {orderSuccessMessage}
-                  </p>
-                )}
                 <button
-                  type="submit"
-                  disabled={submittingOrder}
-                  className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-950"
+                  type="button"
+                  disabled={signingIn}
+                  onClick={handleGoogleSignIn}
+                  className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 text-xs font-semibold text-white transition-colors hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-950"
                 >
-                  <ShoppingCart className="h-4 w-4" />
-                  <span>
-                    {submittingOrder
-                      ? "Submitting Order..."
-                      : `Submit Order — ৳${orderBook.priceBdt}`}
-                  </span>
+                  {signingIn ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <LogIn className="h-4 w-4" />
+                  )}
+                  <span>{signingIn ? "Signing in with Google..." : "Continue with Google"}</span>
                 </button>
-              </form>
+              </div>
+            ) : orderIsVerified ? (
+              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-5 text-center dark:border-emerald-500/30 dark:bg-emerald-500/10">
+                <CheckCircle2 className="mx-auto h-9 w-9 text-emerald-600 dark:text-emerald-400" />
+                <h4 className="mt-2 font-['Hind_Siliguri'] text-lg font-bold text-emerald-900 dark:text-emerald-200">
+                  বইটি আপনার অ্যাকাউন্টে আনলক আছে!
+                </h4>
+                <p className="mt-1 font-['Hind_Siliguri'] text-xs text-emerald-800/90 dark:text-emerald-300/90">
+                  আপনার পেমেন্ট ভেরিফাইড ({user.email})। এখনই ফুল-স্ক্রিন রিডারে সম্পূর্ণ বইটি পড়ুন।
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = orderBook;
+                    setOrderBook(null);
+                    openFullscreenReader(target, false);
+                  }}
+                  className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-neutral-950 px-6 font-mono text-xs font-bold uppercase tracking-[0.14em] text-white dark:bg-white dark:text-neutral-950"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                  <span>Read Full Book Now</span>
+                </button>
+              </div>
+            ) : orderIsPending ? (
+              <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50/85 p-5 dark:border-amber-500/30 dark:bg-amber-500/10">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                    <Clock className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 font-['Hind_Siliguri']">
+                    <p className="font-mono text-[10px] font-bold uppercase tracking-[0.16em] text-amber-800 dark:text-amber-300">
+                      STATUS: PENDING VERIFICATION
+                    </p>
+                    <h4 className="mt-0.5 text-base font-bold text-neutral-950 dark:text-foreground">
+                      আপনার পেমেন্ট ভেরিফিকেশনের জন্য পেন্ডিং আছে
+                    </h4>
+                    <p className="mt-1 text-xs leading-relaxed text-neutral-700 dark:text-muted-foreground">
+                      অ্যাডমিন আপনার প্রদত্ত Transaction ID যাচাই করে অ্যাপ্রুভ করে দিলেই আপনার
+                      অ্যাকাউন্টে ({user.email}) সম্পূর্ণ বইটি আনলক হয়ে যাবে।
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2.5 rounded-xl border border-amber-200/80 bg-white/80 p-3 text-xs dark:border-amber-500/20 dark:bg-card/80">
+                  <div>
+                    <span className="text-neutral-500">Payment Method</span>
+                    <p className="font-mono font-bold text-neutral-900 dark:text-foreground">
+                      {orderExistingRecord?.paymentMethod}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500">Submitted TrxID</span>
+                    <p className="font-mono font-bold text-neutral-900 dark:text-foreground">
+                      {orderExistingRecord?.paymentReference}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500">Connected Account</span>
+                    <p className="truncate font-mono text-[11px] font-semibold text-neutral-800 dark:text-foreground">
+                      {orderExistingRecord?.buyerEmail}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500">Order Date</span>
+                    <p className="font-mono font-semibold text-neutral-800 dark:text-foreground">
+                      {orderExistingRecord?.purchaseDate}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                  <Link
+                    to="/account"
+                    onClick={() => setOrderBook(null)}
+                    className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-neutral-950 px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-white dark:bg-white dark:text-neutral-950"
+                  >
+                    <span>Track in Account</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                  {orderBook.previewStreamUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = orderBook;
+                        setOrderBook(null);
+                        openFullscreenReader(target, true);
+                      }}
+                      className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-neutral-300 bg-white px-4 font-['Hind_Siliguri'] text-xs font-semibold text-neutral-900 dark:border-border dark:bg-card dark:text-foreground"
+                    >
+                      <BookOpen className="h-3.5 w-3.5" />
+                      <span>অপেক্ষার মাঝে স্যাম্পল পড়ুন</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Connected Google Account Mini Pill */}
+                <div className="mt-4 flex items-center justify-between gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-3.5 py-2 dark:border-emerald-500/25 dark:bg-emerald-500/10">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <span className="truncate font-mono text-[11px] font-semibold text-emerald-900 dark:text-emerald-200">
+                      Connected: {user.email}
+                    </span>
+                  </div>
+                  <span className="shrink-0 font-mono text-[10px] uppercase text-emerald-700 dark:text-emerald-300">
+                    Google Verified
+                  </span>
+                </div>
+
+                {orderIsRejected && orderExistingRecord?.adminNote && (
+                  <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 font-['Hind_Siliguri'] text-xs text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+                    <strong>পূর্বের অর্ডার রিজেক্ট হয়েছে:</strong> {orderExistingRecord.adminNote} —
+                    সঠিক TrxID দিয়ে নিচে আবার সাবমিট করুন।
+                  </div>
+                )}
+
+                {/* 4-Channel Bangladesh Payment Selector (bKash / Nagad / Rocket / Bank Account) */}
+                <div className="mt-5">
+                  <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                    Select Payment Channel (বিকাশ / নগদ / রকেট / ব্যাংক একাউন্ট)
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {BOOK_PAYMENT_CHANNELS.map((ch) => {
+                      const active = paymentMethod === ch.method;
+                      return (
+                        <button
+                          key={ch.method}
+                          type="button"
+                          onClick={() => setPaymentMethod(ch.method)}
+                          className={`flex flex-col items-center justify-center gap-1 rounded-xl border px-2.5 py-2.5 text-center transition-all ${
+                            active
+                              ? "border-neutral-950 bg-neutral-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-neutral-950"
+                              : "border-neutral-200 bg-neutral-50/70 text-neutral-700 hover:border-neutral-400 hover:bg-white dark:border-border dark:bg-secondary/30 dark:text-foreground"
+                          }`}
+                        >
+                          {ch.method === "Dutch-Bangla Bank" ? (
+                            <Building2 className="h-4 w-4" />
+                          ) : (
+                            <Smartphone className="h-4 w-4" />
+                          )}
+                          <span className="font-['Hind_Siliguri'] text-xs font-bold">
+                            {ch.shortLabel}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Active Channel Account Number & Instructions */}
+                  <div className="mt-3 rounded-2xl border border-neutral-200 bg-neutral-50 p-4 dark:border-border dark:bg-secondary/30">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <span
+                          className={`inline-flex items-center rounded-md border px-2 py-0.5 font-mono text-[10px] font-semibold ${activeChannel.accentClass}`}
+                        >
+                          {activeChannel.accountType}
+                        </span>
+                        <p className="mt-2 font-mono text-base font-bold tabular-nums text-neutral-950 dark:text-foreground">
+                          {activeChannel.accountNumber}
+                        </p>
+                        <p className="mt-0.5 font-['Hind_Siliguri'] text-[11px] text-neutral-600 dark:text-muted-foreground">
+                          Account Holder: <strong>{activeChannel.accountHolder}</strong>
+                        </p>
+                        {activeChannel.bankDetails && (
+                          <p className="mt-1 font-['Hind_Siliguri'] text-[11px] leading-relaxed text-neutral-700 dark:text-neutral-300">
+                            {activeChannel.bankDetails}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleCopyChannelValue(activeChannel.method, activeChannel.copyValue)
+                        }
+                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 text-xs font-semibold text-neutral-800 hover:bg-neutral-100 dark:border-border dark:bg-card dark:text-foreground"
+                      >
+                        {copiedChannelKey === activeChannel.method ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                        <span>{copiedChannelKey === activeChannel.method ? "Copied" : "Copy"}</span>
+                      </button>
+                    </div>
+                    <p className="mt-2.5 border-t border-neutral-200/80 pt-2.5 font-['Hind_Siliguri'] text-xs leading-relaxed text-neutral-600 dark:border-border/60 dark:text-muted-foreground">
+                      {activeChannel.instructionBn}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Payment Verification Submission Form */}
+                <form onSubmit={handleOrderSubmit} className="mt-4 space-y-3.5">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                        Your Full Name
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={buyerName}
+                        onChange={(e) => setBuyerName(e.target.value)}
+                        placeholder="আপনার পূর্ণ নাম"
+                        className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-sm text-neutral-950 outline-none focus:border-neutral-900 dark:border-border dark:bg-background dark:text-foreground"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                        {paymentMethod === "Dutch-Bangla Bank"
+                          ? "Mobile / WhatsApp"
+                          : "Sender Mobile / WhatsApp"}
+                      </label>
+                      <input
+                        type="tel"
+                        required
+                        value={buyerPhone}
+                        onChange={(e) => setBuyerPhone(e.target.value)}
+                        placeholder="01XXXXXXXXX"
+                        className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3.5 text-sm text-neutral-950 outline-none focus:border-neutral-900 dark:border-border dark:bg-background dark:text-foreground"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-neutral-500">
+                      {activeChannel.referenceLabelBn}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={paymentReference}
+                      onChange={(e) => setPaymentReference(e.target.value)}
+                      placeholder={activeChannel.referencePlaceholder}
+                      className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3.5 font-mono text-sm text-neutral-950 outline-none focus:border-neutral-900 dark:border-border dark:bg-background dark:text-foreground"
+                    />
+                  </div>
+
+                  {orderError && (
+                    <p className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 font-['Hind_Siliguri'] text-xs font-medium text-rose-700">
+                      {orderError}
+                    </p>
+                  )}
+                  {orderSuccessMessage && (
+                    <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 font-['Hind_Siliguri'] text-xs font-medium text-emerald-800">
+                      {orderSuccessMessage}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={submittingOrder}
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-neutral-950 px-5 font-mono text-xs font-semibold uppercase tracking-[0.14em] text-white transition-colors hover:bg-neutral-800 disabled:opacity-60 dark:bg-white dark:text-neutral-950"
+                  >
+                    {submittingOrder ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ShoppingCart className="h-4 w-4" />
+                    )}
+                    <span>
+                      {submittingOrder
+                        ? "Submitting for Verification..."
+                        : `Submit ${activeChannel.shortLabel} Payment — ৳${orderBook.priceBdt}`}
+                    </span>
+                  </button>
+                </form>
+              </>
             )}
           </div>
         </div>

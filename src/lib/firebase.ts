@@ -111,6 +111,7 @@ export async function logOutUser() {
 export const BILLING_METHODS = [
   "bKash",
   "Nagad",
+  "Rocket",
   "Dutch-Bangla Bank",
   "Visa / Mastercard",
   "PayPal",
