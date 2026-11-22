@@ -928,6 +928,406 @@ async function handleAssistantChatRequest(request: Request): Promise<Response> {
   }
 }
 
+function decodeXmlEntities(input: string): string {
+  return input
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'");
+}
+
+function parseYouTubeIdsServer(rawUrl: string): {
+  videoId: string | null;
+  playlistId: string | null;
+} {
+  const trimmed = rawUrl.trim();
+  let videoId: string | null = null;
+  let playlistId: string | null = null;
+
+  try {
+    const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    const parsed = new URL(normalized);
+    const host = parsed.hostname.replace(/^www\./i, "").toLowerCase();
+
+    if (host === "youtu.be") {
+      const seg = parsed.pathname.split("/").filter(Boolean)[0];
+      if (seg && /^[A-Za-z0-9_-]{11}$/.test(seg)) videoId = seg;
+      const list = parsed.searchParams.get("list");
+      if (list && /^[A-Za-z0-9_-]{10,64}$/.test(list)) playlistId = list;
+    } else if (host.includes("youtube.com") || host.includes("youtube-nocookie.com")) {
+      const v = parsed.searchParams.get("v");
+      if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) videoId = v;
+      const list = parsed.searchParams.get("list");
+      if (list && /^[A-Za-z0-9_-]{10,64}$/.test(list)) playlistId = list;
+      if (!videoId) {
+        const parts = parsed.pathname.split("/").filter(Boolean);
+        if (
+          parts.length >= 2 &&
+          ["shorts", "embed", "live", "v"].includes(parts[0]) &&
+          /^[A-Za-z0-9_-]{11}$/.test(parts[1])
+        ) {
+          videoId = parts[1];
+        }
+      }
+    }
+  } catch {
+    const vMatch = trimmed.match(/(?:v=|youtu\.be\/|embed\/|shorts\/|live\/)([A-Za-z0-9_-]{11})/);
+    if (vMatch?.[1]) videoId = vMatch[1];
+    const lMatch = trimmed.match(/[?&]list=([A-Za-z0-9_-]{10,64})/);
+    if (lMatch?.[1]) playlistId = lMatch[1];
+  }
+
+  return { videoId, playlistId };
+}
+
+async function fetchYouTubeVideoOembed(videoId: string): Promise<{
+  title: string;
+  channelTitle: string;
+  thumbnail: string;
+}> {
+  const watchUrl = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+  const fallback = {
+    title: `YouTube Audio (${videoId})`,
+    channelTitle: "YouTube",
+    thumbnail: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+  };
+
+  for (const endpoint of [
+    `https://www.youtube.com/oembed?url=${encodeURIComponent(watchUrl)}&format=json`,
+    `https://noembed.com/embed?url=${encodeURIComponent(watchUrl)}`,
+  ]) {
+    try {
+      const res = await fetch(endpoint, {
+        headers: { "user-agent": "Mozilla/5.0 BismahAudioBook/1.0" },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) continue;
+      const data = (await res.json()) as {
+        title?: string;
+        author_name?: string;
+        thumbnail_url?: string;
+      };
+      if (data.title) {
+        return {
+          title: data.title.trim(),
+          channelTitle: (data.author_name || "YouTube").trim(),
+          thumbnail: data.thumbnail_url || fallback.thumbnail,
+        };
+      }
+    } catch {
+      // Try next metadata endpoint
+    }
+  }
+
+  return fallback;
+}
+
+async function fetchYouTubePlaylistTracks(playlistId: string): Promise<{
+  playlistTitle: string;
+  tracks: Array<{
+    videoId: string;
+    title: string;
+    channelTitle: string;
+    thumbnail: string;
+  }>;
+}> {
+  const feedUrl = `https://www.youtube.com/feeds/videos.xml?playlist_id=${encodeURIComponent(playlistId)}`;
+  try {
+    const res = await fetch(feedUrl, {
+      headers: { "user-agent": "Mozilla/5.0 BismahAudioBook/1.0" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (res.ok) {
+      const xml = await res.text();
+      const feedTitleMatch = xml.match(/<feed[\s\S]*?<title>([\s\S]*?)<\/title>/);
+      const playlistTitle = feedTitleMatch?.[1]
+        ? decodeXmlEntities(feedTitleMatch[1].trim())
+        : `YouTube Playlist`;
+
+      const entryMatches = xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g);
+      const tracks: Array<{
+        videoId: string;
+        title: string;
+        channelTitle: string;
+        thumbnail: string;
+      }> = [];
+
+      for (const m of entryMatches) {
+        const block = m[1] || "";
+        const vid = block.match(/<yt:videoId>([A-Za-z0-9_-]{11})<\/yt:videoId>/)?.[1];
+        if (!vid) continue;
+        const titleRaw = block.match(/<title>([\s\S]*?)<\/title>/)?.[1] || `Track (${vid})`;
+        const authorRaw =
+          block.match(/<author>[\s\S]*?<name>([\s\S]*?)<\/name>[\s\S]*?<\/author>/)?.[1] ||
+          "YouTube";
+        tracks.push({
+          videoId: vid,
+          title: decodeXmlEntities(titleRaw.trim()),
+          channelTitle: decodeXmlEntities(authorRaw.trim()),
+          thumbnail: `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+        });
+      }
+
+      if (tracks.length > 0) {
+        return { playlistTitle, tracks };
+      }
+    }
+  } catch {
+    // Fall through to playlist page fallback
+  }
+
+  // Fallback: inspect YouTube playlist page HTML for videoIds
+  try {
+    const pageRes = await fetch(
+      `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`,
+      {
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36",
+          "accept-language": "en-US,en;q=0.9",
+        },
+        signal: AbortSignal.timeout(6000),
+      },
+    );
+    if (pageRes.ok) {
+      const html = await pageRes.text();
+      const seen = new Set<string>();
+      const ids: string[] = [];
+      for (const m of html.matchAll(/"videoId":"([A-Za-z0-9_-]{11})"/g)) {
+        const id = m[1];
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          ids.push(id);
+          if (ids.length >= 15) break;
+        }
+      }
+      if (ids.length > 0) {
+        const resolved = await Promise.all(
+          ids.map(async (id) => {
+            const meta = await fetchYouTubeVideoOembed(id);
+            return { videoId: id, ...meta };
+          }),
+        );
+        return { playlistTitle: "YouTube Playlist", tracks: resolved };
+      }
+    }
+  } catch {
+    // Ignore
+  }
+
+  return { playlistTitle: "YouTube Playlist", tracks: [] };
+}
+
+async function handleBismahApiRequest(
+  request: Request,
+  pathname: string,
+  searchParams: URLSearchParams,
+): Promise<Response> {
+  if (request.method !== "GET") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { "content-type": "application/json; charset=utf-8" },
+    });
+  }
+
+  if (pathname === "/api/bismah/resolve") {
+    const rawUrl = searchParams.get("url")?.trim() || "";
+    const { videoId, playlistId } = parseYouTubeIdsServer(rawUrl);
+
+    if (!videoId && !playlistId) {
+      return new Response(
+        JSON.stringify({ error: "Please paste a valid YouTube video or playlist link." }),
+        {
+          status: 400,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        },
+      );
+    }
+
+    // If playlist link (without specific videoId, or user explicitly pasted playlist?list=...)
+    if (playlistId && !videoId) {
+      const pl = await fetchYouTubePlaylistTracks(playlistId);
+      if (pl.tracks.length === 0) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "Could not load tracks from this playlist. Make sure the playlist is public or unlisted.",
+          }),
+          {
+            status: 404,
+            headers: { "content-type": "application/json; charset=utf-8" },
+          },
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          type: "playlist",
+          playlistId,
+          playlistTitle: pl.playlistTitle,
+          tracks: pl.tracks,
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "public, max-age=300",
+          },
+        },
+      );
+    }
+
+    const meta = await fetchYouTubeVideoOembed(videoId!);
+    return new Response(
+      JSON.stringify({
+        type: "video",
+        playlistId: playlistId || null,
+        tracks: [
+          {
+            videoId: videoId!,
+            title: meta.title,
+            channelTitle: meta.channelTitle,
+            thumbnail: meta.thumbnail,
+          },
+        ],
+      }),
+      {
+        status: 200,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "public, max-age=300",
+        },
+      },
+    );
+  }
+
+  if (pathname === "/api/bismah/thumb") {
+    const videoId = searchParams.get("videoId")?.trim() || "";
+    if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+      return new Response("Invalid videoId", { status: 400 });
+    }
+    try {
+      const upstream = await fetch(`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!upstream.ok) {
+        return new Response("Thumbnail unavailable", { status: 404 });
+      }
+      const bytes = await upstream.arrayBuffer();
+      return new Response(bytes, {
+        status: 200,
+        headers: {
+          "content-type": upstream.headers.get("content-type") || "image/jpeg",
+          "cache-control": "public, max-age=86400",
+        },
+      });
+    } catch {
+      return new Response("Thumbnail fetch failed", { status: 502 });
+    }
+  }
+
+  if (pathname === "/api/bismah/audio") {
+    const videoId = searchParams.get("videoId")?.trim() || "";
+    if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+      return new Response(JSON.stringify({ error: "Invalid videoId" }), {
+        status: 400,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+
+    // Attempt direct YouTube audio stream resolution via Innertube client first;
+    // gracefully fall back to client-side YouTube audio engine when datacenter IPs are challenged.
+    try {
+      const innertube = await fetch(
+        "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "user-agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
+          },
+          body: JSON.stringify({
+            videoId,
+            context: {
+              client: {
+                clientName: "ANDROID",
+                clientVersion: "20.10.38",
+                androidSdkVersion: 34,
+                hl: "en",
+                gl: "US",
+              },
+            },
+            contentCheckOk: true,
+            racyCheckOk: true,
+          }),
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+
+      if (innertube.ok) {
+        const data = (await innertube.json()) as {
+          streamingData?: {
+            adaptiveFormats?: Array<{
+              mimeType?: string;
+              url?: string;
+              bitrate?: number;
+              contentLength?: string;
+            }>;
+          };
+        };
+
+        const audioFormats = (data.streamingData?.adaptiveFormats ?? [])
+          .filter((f) => f.mimeType?.startsWith("audio/") && Boolean(f.url))
+          .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
+
+        const preferred =
+          audioFormats.find((f) => f.mimeType?.includes("audio/mp4")) ?? audioFormats[0];
+
+        if (preferred?.url) {
+          const audioRes = await fetch(preferred.url, {
+            headers: {
+              "user-agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
+            },
+            signal: AbortSignal.timeout(25000),
+          });
+          if (audioRes.ok && audioRes.body) {
+            const headers = new Headers();
+            headers.set("content-type", audioRes.headers.get("content-type") || "audio/mp4");
+            const len = audioRes.headers.get("content-length") || preferred.contentLength;
+            if (len) headers.set("content-length", len);
+            headers.set("cache-control", "private, max-age=3600");
+            return new Response(audioRes.body, { status: 200, headers });
+          }
+        }
+      }
+    } catch {
+      // Fall back cleanly
+    }
+
+    return new Response(
+      JSON.stringify({
+        mode: "youtube-engine",
+        videoId,
+        cached: true,
+      }),
+      {
+        status: 200,
+        headers: {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        },
+      },
+    );
+  }
+
+  return new Response(JSON.stringify({ error: "Not found" }), {
+    status: 404,
+    headers: { "content-type": "application/json; charset=utf-8" },
+  });
+}
+
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
     try {
@@ -944,6 +1344,11 @@ export default {
       if (url.pathname.startsWith("/api/books/")) {
         return withSecurityHeaders(
           await handleSecureBookStreamRequest(request, url.pathname, url.searchParams),
+        );
+      }
+      if (url.pathname.startsWith("/api/bismah/")) {
+        return withSecurityHeaders(
+          await handleBismahApiRequest(request, url.pathname, url.searchParams),
         );
       }
 

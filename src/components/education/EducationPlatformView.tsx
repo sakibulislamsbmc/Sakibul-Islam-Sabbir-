@@ -23,7 +23,6 @@ import { BismahAudioPlayerApp } from "@/components/bismah/BismahAudioPlayerApp";
 import { MobileBottomNav, MobileHeaderMenu } from "@/components/MobileNavigation";
 import { PWAInstallButton } from "@/components/PWAInstallButton";
 import { BooksShowcaseSection } from "@/components/books/BooksShowcaseSection";
-import { INITIAL_BISMAH_TRACKS } from "@/data/bismah-audio-data";
 import { BOOKS_CATALOG } from "@/data/books-data";
 import { QURAN_COURSE } from "@/data/courses-data";
 import { GRAPHIC_DESIGN_COURSE } from "@/data/graphic-design-course-data";
@@ -281,11 +280,9 @@ export function EducationPlatformView({ initialSection }: { initialSection?: Edu
                 </p>
               </div>
               <div>
-                <p className="font-mono text-2xl font-bold tabular-nums text-foreground">
-                  0{INITIAL_BISMAH_TRACKS.length}+
-                </p>
+                <p className="font-mono text-2xl font-bold tabular-nums text-foreground">Bismah</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Bismah Audio · YouTube &amp; Offline Podcast
+                  Audio Book · YouTube &amp; Offline Library
                 </p>
               </div>
             </div>
@@ -323,10 +320,10 @@ export function EducationPlatformView({ initialSection }: { initialSection?: Edu
                 <button
                   type="button"
                   onClick={() => openFullscreenSection("bismah")}
-                  className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-amber-500/40 bg-amber-500/10 px-4 text-xs font-semibold text-foreground transition-all duration-150 hover:border-amber-500 hover:bg-amber-600 hover:text-white"
+                  className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-border bg-background px-4 text-xs font-semibold text-foreground transition-all duration-150 hover:border-foreground hover:bg-primary hover:text-primary-foreground"
                 >
-                  <Headphones className="h-3.5 w-3.5 text-amber-500" />
-                  04. Bismah Audio
+                  <Headphones className="h-3.5 w-3.5" />
+                  04. Bismah Audio Book
                   <Maximize2 className="h-3 w-3 opacity-70" />
                 </button>
               </div>
@@ -767,7 +764,7 @@ export function EducationPlatformView({ initialSection }: { initialSection?: Edu
             </div>
           </section>
 
-          {/* PILLAR 04: BISMAH STANDALONE AUDIO PODCAST PLAYER */}
+          {/* PILLAR 04: BISMAH STANDALONE AUDIO BOOK PLAYER */}
           <section
             id="education-bismah"
             className="rounded-3xl border border-border/80 bg-background/60 p-6 shadow-sm backdrop-blur-xl sm:p-8 lg:p-10"
@@ -775,10 +772,10 @@ export function EducationPlatformView({ initialSection }: { initialSection?: Edu
             <div className="mb-8 flex flex-col justify-between gap-4 border-b border-border/70 pb-6 sm:flex-row sm:items-end">
               <div>
                 <p className="mb-1.5 font-mono text-xs text-muted-foreground">
-                  04. Standalone YouTube &amp; Offline Podcast App · No Sign-In Required
+                  04. Personal YouTube &amp; Offline Audio Library · No Sign-In Required
                 </p>
                 <h2 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
-                  Bismah <span className="text-muted-foreground/75">Audio Player.</span>
+                  Bismah <span className="text-muted-foreground/75">Audio Book.</span>
                 </h2>
               </div>
 
@@ -786,7 +783,7 @@ export function EducationPlatformView({ initialSection }: { initialSection?: Edu
                 <button
                   type="button"
                   onClick={() => openFullscreenSection("bismah")}
-                  className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-[#D97706] px-5 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                  className="inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-primary px-5 text-xs font-semibold text-primary-foreground transition-opacity hover:opacity-90"
                 >
                   <Maximize2 className="h-3.5 w-3.5" />
                   Open Bismah Full Screen
@@ -795,7 +792,7 @@ export function EducationPlatformView({ initialSection }: { initialSection?: Edu
                   to="/bismah"
                   className="inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-background px-4 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
                 >
-                  Standalone App
+                  Standalone Page
                   <ArrowUpRight className="h-3.5 w-3.5" />
                 </Link>
               </div>
@@ -897,7 +894,7 @@ export function EducationPlatformView({ initialSection }: { initialSection?: Edu
                   onClick={() => openFullscreenSection("bismah")}
                   className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-xs font-semibold transition-colors ${
                     fullscreenSection === "bismah"
-                      ? "bg-[#D97706] text-white shadow-sm"
+                      ? "bg-primary text-primary-foreground shadow-sm"
                       : fullscreenSection === "workshops"
                         ? "text-white/75 hover:text-white"
                         : "text-muted-foreground hover:text-foreground"
@@ -1343,10 +1340,10 @@ export function EducationPlatformView({ initialSection }: { initialSection?: Edu
             </div>
           )}
 
-          {/* FULL-SCREEN VIEW 4: BISMAH STANDALONE AUDIO PODCAST PLAYER */}
+          {/* FULL-SCREEN VIEW 4: BISMAH STANDALONE AUDIO BOOK PLAYER */}
           {fullscreenSection === "bismah" && (
-            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-              <BismahAudioPlayerApp showStandaloneLink compactHeader />
+            <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+              <BismahAudioPlayerApp showStandaloneLink fullHeight />
             </div>
           )}
         </div>
