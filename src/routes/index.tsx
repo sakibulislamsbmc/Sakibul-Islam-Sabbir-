@@ -36,7 +36,7 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-const NAV = ["Home", "Projects", "Portfolio", "About Me", "Thankful", "Contact"];
+const NAV = ["Home", "Education", "Portfolio", "About Me", "Thankful", "Contact"];
 const IMAGES = [
   [
     "https://www.image2url.com/r2/default/images/1793830217029-a79c9985-a662-4e24-a2a7-48ee66156994.png",
@@ -95,8 +95,8 @@ const SLIDES = [
       <a href="/contact" className={btnPrimary}>
         Let's Collaborate
       </a>
-      <a href="/projects" className={btnOutline}>
-        Explore Archive <ArrowRight className="ml-2 h-4 w-4" />
+      <a href="/portfolio" className={btnOutline}>
+        Explore Portfolio <ArrowRight className="ml-2 h-4 w-4" />
       </a>
       <PWAInstallButton variant="hero" />
     </div>

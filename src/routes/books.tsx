@@ -66,7 +66,7 @@ export const Route = createFileRoute("/books")({
 
 const NAV = [
   { label: "Home", href: "/" },
-  { label: "Projects", href: "/projects" },
+  { label: "Education", href: "/education" },
   { label: "Portfolio", href: "/portfolio" },
   { label: "About Me", href: "/about-me" },
   { label: "Thankful", href: "/thankful" },
@@ -120,7 +120,7 @@ function BooksPage() {
 
           <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-10 md:flex">
             {NAV.map((item) => {
-              const isActive = item.label === "Projects";
+              const isActive = item.label === "Education";
               return (
                 <Link
                   key={item.label}
@@ -143,11 +143,11 @@ function BooksPage() {
           <div className="hidden shrink-0 items-center gap-3 md:flex">
             <PWAInstallButton variant="header" />
             <Link
-              to="/projects"
+              to="/education"
               className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-border bg-background px-4 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
-              Back to Projects
+              Back to Education
             </Link>
             <Link
               to="/account"
@@ -171,25 +171,25 @@ function BooksPage() {
           </div>
         </div>
 
-        <MobileHeaderMenu open={open} activePath="/projects" onClose={() => setOpen(false)} />
+        <MobileHeaderMenu open={open} activePath="/education" onClose={() => setOpen(false)} />
       </header>
 
       {/* Main Books Content */}
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-24 sm:px-6 md:pt-32 lg:px-8">
         <div className="mb-6">
           <Link
-            to="/projects"
+            to="/education"
             className="inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500 transition-colors hover:text-neutral-950 dark:text-muted-foreground dark:hover:text-foreground"
           >
             <ArrowLeft className="h-3.5 w-3.5" />
-            <span>Back to Projects</span>
+            <span>Back to Education</span>
           </Link>
         </div>
 
         <BooksShowcaseSection highlightedBookSlug={requestedSlug} />
       </main>
 
-      <MobileBottomNav activePath="/projects" />
+      <MobileBottomNav activePath="/education" />
     </div>
   );
 }

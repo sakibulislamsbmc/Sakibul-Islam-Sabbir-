@@ -1,5 +1,14 @@
 import { Link } from "@tanstack/react-router";
-import { Award, BookOpen, Heart, House, Layers, Mail, User, type LucideIcon } from "lucide-react";
+import {
+  Award,
+  BookOpen,
+  GraduationCap,
+  Heart,
+  House,
+  Mail,
+  User,
+  type LucideIcon,
+} from "lucide-react";
 import { PWAInstallButton } from "./PWAInstallButton";
 
 type MobileNavItem = {
@@ -10,7 +19,7 @@ type MobileNavItem = {
 
 const MOBILE_NAV_ITEMS: MobileNavItem[] = [
   { label: "Home", href: "/", icon: House },
-  { label: "Projects", href: "/projects", icon: Layers },
+  { label: "Education", href: "/education", icon: GraduationCap },
   { label: "Portfolio", href: "/portfolio", icon: BookOpen },
   { label: "About Me", href: "/about-me", icon: Award },
   { label: "Thankful", href: "/thankful", icon: Heart },
@@ -37,7 +46,8 @@ export function MobileHeaderMenu({
       <div className="mx-auto flex max-w-md flex-col gap-1.5">
         {MOBILE_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const isActive = activePath === item.href;
+          const isActive =
+            activePath === item.href || (item.href === "/education" && activePath === "/projects");
           return (
             <Link
               key={item.label}
@@ -84,7 +94,8 @@ export function MobileBottomNav({ activePath }: { activePath: string }) {
       <div className="grid grid-cols-7 items-center gap-1">
         {MOBILE_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
-          const isActive = activePath === item.href;
+          const isActive =
+            activePath === item.href || (item.href === "/education" && activePath === "/projects");
           return (
             <Link
               key={item.label}

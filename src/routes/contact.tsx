@@ -38,7 +38,7 @@ export const Route = createFileRoute("/contact")({
 
 const NAV = [
   { label: "Home", href: "/" },
-  { label: "Projects", href: "/projects" },
+  { label: "Education", href: "/education" },
   { label: "Portfolio", href: "/portfolio" },
   { label: "About Me", href: "/about-me" },
   { label: "Thankful", href: "/thankful" },

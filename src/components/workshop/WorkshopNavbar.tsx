@@ -21,12 +21,12 @@ export function WorkshopNavbar() {
         {/* Left: Back to Portfolio & Official Workshop Logo */}
         <div className="flex min-w-0 items-center gap-3 sm:gap-4">
           <Link
-            to="/projects"
-            title="Back to Projects"
+            to="/education"
+            title="Back to Education"
             className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/10 bg-[#0B0F0D] px-2.5 text-[11px] font-medium text-[#A1A1AA] transition-colors hover:border-[#00D978]/50 hover:text-white"
           >
             <ArrowLeft className="h-3.5 w-3.5 text-[#00D978]" />
-            <span className="hidden sm:inline">Projects</span>
+            <span className="hidden sm:inline">Education</span>
           </Link>
 
           <a
@@ -127,12 +127,12 @@ export function WorkshopNavbar() {
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </a>
               <Link
-                to="/projects"
+                to="/education"
                 onClick={() => setMobileOpen(false)}
                 className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-white/10 bg-[#0B0F0D] px-4 text-xs font-medium text-white"
               >
                 <ArrowLeft className="h-3.5 w-3.5 text-[#00D978]" />
-                Return to Projects Portfolio
+                Return to Education Platform
               </Link>
             </div>
           </nav>

@@ -187,6 +187,7 @@ export function isPrimaryAdminUser(
 
 const SAFE_APP_ROUTES = new Set<string>([
   "/",
+  "/education",
   "/projects",
   "/portfolio",
   "/about-me",

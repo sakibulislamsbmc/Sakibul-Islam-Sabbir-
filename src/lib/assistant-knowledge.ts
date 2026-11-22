@@ -95,11 +95,10 @@ export const WEBSITE_KNOWLEDGE_PROMPT = `
 - 8 Learning Tracks: Understanding Generative AI, Exploring AI Tools, Smart Prompting, AI for Smart Study, AI for Creativity, AI for Productivity, AI for Future Skills, Responsible AI Usage.
 - Ticket Booking: Official registration via SupportKori (https://www.supportkori.com/sakibul756/extras/ai-for-students-workshop-2027-gkam). Participation certificate provided. Guest speaker & additional sponsor slots open.
 
-5. PROJECTS (/projects), BOOKS (/books) & PORTFOLIO (/portfolio):
-- Website Projects (6): E-Commerce Storefront, EdTech Learning Portal, SaaS Workflow & AI Automation Hub, Creative Studio Agency Platform, Corporate FinTech Advisory Portal, Healthcare & Clinic Booking System.
-- Android Apps (4): Smart Task & Habit Companion, Client Order & Delivery Tracker, Student Learning & Quiz App, Personal Finance & Expense Ledger (Kotlin, Jetpack Compose, Flutter, Firebase).
-- Published Works / Books (/projects#books and /books): Official ebooks authored by Sakibul Islam Sabbir — (1) "মুসলিম হিসেবে আপনার যে দশটি বিষয় জানা প্রয়োজন" (পূর্বমূল্য ৳৮০ কেটে এখন সম্পূর্ণ ফ্রি উন্মুক্ত) এবং (2) "গ্রাফিক ডিজাইন ও ফ্রিল্যান্সিং মাস্টারবুক" (পেইড ই-বুক — ৳১৫০, ফ্রি প্রিভিউ ও বিকাশ/নগদ TrxID ভেরিফিকেশনের পর লাইফটাইম এক্সেস)। প্রতিটি বই শুধুমাত্র ওয়েবসাইটের ভেতর সুরক্ষিত ফুল-স্ক্রিন রিডারেই পড়া যায় (অন্য কোনো ব্রাউজারে ওপেন হয় না), পড়ার সুবিধার্থে জুম ইন/আউট, ডানে-বামে ও উপরে-নিচে স্ক্রল, গ্লাসমরফিজম কন্ট্রোল ও অফলাইন ভল্ট আছে এবং সোশ্যাল মিডিয়াতে লিংক শেয়ার করলে সেই বইয়ের নিজস্ব কাভার দেখায়।
-- Portfolio (/portfolio): 36 Design Concepts (Brand Identity, Social Media, Thumbnails, Posters, UI Systems) + 4 Long-Form Videos (including Barnoi Lifestyle TVC Ads, Nafees Selim Podcast in As-Sunnah Skill) + Short-Form Vertical Reels.
+5. EDUCATION (/education), BOOKS (/books) & PORTFOLIO (/portfolio):
+- Education Platform (/education): Dedicated learning hub highlighting Courses (Free Quran Course + Paid Graphic Design & AI Live Course), Workshops (AI FOR STUDENTS Workshop 2027), and Published Books — clicking any section launches an immersive full-screen learning view.
+- Published Works / Books (/education?section=books and /books): Official ebooks authored by Sakibul Islam Sabbir — (1) "মুসলিম হিসেবে আপনার যে দশটি বিষয় জানা প্রয়োজন" (পূর্বমূল্য ৳৮০ কেটে এখন সম্পূর্ণ ফ্রি উন্মুক্ত) এবং (2) "গ্রাফিক ডিজাইন ও ফ্রিল্যান্সিং মাস্টারবুক" (পেইড ই-বুক — ৳১৫০, ফ্রি প্রিভিউ ও বিকাশ/নগদ/রকেট/ব্যাংক TrxID ভেরিফিকেশনের পর লাইফটাইম এক্সেস)।
+- Portfolio (/portfolio): Unified showcase with 4 sections — (1) 36 Design Concepts (8 featured in All Works, all 36 serial in Design tab), (2) 8 Video Productions (4 Long-Form + 4 Short-Form Reels), (3) 6 Website Development Projects (E-Commerce, EdTech, SaaS AI Automation, Creative Agency, FinTech, Healthcare Booking), and (4) 4 Android App Development Projects (Task Companion, Delivery Tracker, Student Quiz App, Expense Ledger).
 
 6. THANKFUL (/thankful):
 - Heartfelt tribute to "Silent Architects": Teachers (Nasif Muhammad, Masud Rana, Nizam Uddin, MD. Ashraful Islam), Friends (Hridoy Shah Taj, Sahariar Al Rahat, Jahid Hasan, Habibul Bashar Sajib), Relatives (Alomgir Hossain Mama, MD Rocky Hossain, Yasir Arafat Prince, Ahmed Mostafa Raian), and Well-wishers.
@@ -191,28 +190,27 @@ const ROUTE_CATALOG: Array<{
     ],
   },
   {
-    href: "/projects",
-    label: "Projects",
-    description: "ওয়েবসাইট, অ্যান্ড্রয়েড অ্যাপ ও সকল প্রজেক্ট",
+    href: "/education",
+    label: "Education",
+    description: "কোর্স, এআই ওয়ার্কশপ এবং প্রকাশিত বইয়ের ফুল-স্ক্রিন প্ল্যাটফর্ম",
     keywords: [
-      "project",
-      "প্রজেক্ট",
-      "website",
-      "ওয়েবসাইট",
-      "android",
-      "অ্যান্ড্রয়েড",
-      "app",
-      "অ্যাপ",
-      "kotlin",
-      "flutter",
-      "saas",
-      "ecommerce",
+      "education",
+      "এডুকেশন",
+      "শিক্ষা",
+      "learning",
+      "academy",
+      "বই",
+      "book",
+      "কোর্স",
+      "course",
+      "workshop",
+      "ওয়ার্কশপ",
     ],
   },
   {
     href: "/portfolio",
     label: "Portfolio",
-    description: "৩৬টি ডিজাইন কনসেপ্ট, টিভিসি ও ভিডিও রিলস",
+    description: "ডিজাইন (৩৬), ভিডিও (৮), ওয়েবসাইট (৬) ও অ্যান্ড্রয়েড অ্যাপ (৪)",
     keywords: [
       "portfolio",
       "পোর্টফোলিও",
@@ -439,7 +437,7 @@ const OFFLINE_BUCKETS: OfflineKnowledgeBucket[] = [
       "২৭",
       "কুইজ",
     ],
-    routeHrefs: ["/courses", "/projects"],
+    routeHrefs: ["/courses", "/education"],
     answerBn:
       "জি, আমাদের ওয়েবসাইটে সম্পূর্ণ **ফ্রি** ইসলামি কোর্স হিসেবে **“সহজ সূত্রে কুরআন শিখি”** (As-Sunnah Foundation Online Quran Learning Course) যুক্ত আছে।\n\n• **প্রশিক্ষক:** উস্তায মোহাম্মদ হুসাইন মাদানী (সাবেক শিক্ষক, মসজিদে নববী)।\n• **কোর্স কাঠামো:** ২৭টি ধারাবাহিক ভিডিও ক্লাস এবং প্রতিটি ক্লাস শেষে ২৫টি করে MCQ কুইজ।\n• **লক সিস্টেম:** প্রতিটি ক্লাস শুরু থেকে শেষ পর্যন্ত না টেনে সম্পূর্ণ দেখে এবং ২৫ নম্বরের কুইজ জমা দিলে পরবর্তী ক্লাসটি স্বয়ংক্রিয়ভাবে আনলক হয়। কোনো পেমেন্ট ছাড়াই এখনই শুরু করতে পারবেন।",
     answerEn:
@@ -448,11 +446,11 @@ const OFFLINE_BUCKETS: OfflineKnowledgeBucket[] = [
   {
     id: "courses-overview",
     keywords: ["কোর্স", "course", "courses", "শিখতে", "class", "ক্লাস", "লার্নিং"],
-    routeHrefs: ["/graphic-design-course", "/courses", "/projects"],
+    routeHrefs: ["/education", "/graphic-design-course", "/courses"],
     answerBn:
-      "আমাদের ওয়েবসাইটে বর্তমানে ২টি পূর্ণাঙ্গ কোর্স রয়েছে:\n\n১. **সহজ সূত্রে কুরআন শিখি (ফ্রি):** ২৭টি ভিডিও ক্লাস ও ক্লাস-ভিত্তিক ২৫টি MCQ কুইজ। (উস্তায মোহাম্মদ হুসাইন মাদানী)\n২. **Advanced Graphic Design with AI Tools Live Course (পেইড - ৬,০০০ টাকা):** ২০+ লাইভ ক্লাস, ৬টি মডিউল (Photoshop, Illustrator, Midjourney/Firefly, Freelancing, Career & CapCut)। (মেন্টর: সাকিবুল ইসলাম সাব্বির)\n\nআপনি কোন কোর্সটি সম্পর্কে বিস্তারিত জানতে চান?",
+      "আমাদের **Education (`/education`)** প্ল্যাটফর্মে বর্তমানে ২টি পূর্ণাঙ্গ কোর্স রয়েছে:\n\n১. **সহজ সূত্রে কুরআন শিখি (ফ্রি):** ২৭টি ভিডিও ক্লাস ও ক্লাস-ভিত্তিক ২৫টি MCQ কুইজ। (উস্তায মোহাম্মদ হুসাইন মাদানী)\n২. **Advanced Graphic Design with AI Tools Live Course (পেইড - ৬,০০০ টাকা):** ২০+ লাইভ ক্লাস, ৬টি মডিউল (Photoshop, Illustrator, Midjourney/Firefly, Freelancing, Career & CapCut)। (মেন্টর: সাকিবুল ইসলাম সাব্বির)\n\nআপনি কোন কোর্সটি সম্পর্কে বিস্তারিত জানতে চান?",
     answerEn:
-      "We currently offer two structured courses:\n1. **Shohoj Sutre Quran Shikhi (Free):** 27 video classes + 25 MCQs per class.\n2. **Advanced Graphic Design with AI Tools Live Course (Paid — ৳6,000):** 20+ classes across 6 modules mentored by Sakibul Islam Sabbir.",
+      "Our **Education (`/education`)** platform currently offers two structured courses:\n1. **Shohoj Sutre Quran Shikhi (Free):** 27 video classes + 25 MCQs per class.\n2. **Advanced Graphic Design with AI Tools Live Course (Paid — ৳6,000):** 20+ classes across 6 modules mentored by Sakibul Islam Sabbir.",
   },
   {
     id: "workshop",
@@ -472,7 +470,7 @@ const OFFLINE_BUCKETS: OfflineKnowledgeBucket[] = [
       "টিকিট",
       "supportkori",
     ],
-    routeHrefs: ["/workshop", "/projects"],
+    routeHrefs: ["/workshop", "/education"],
     answerBn:
       "**AI FOR STUDENTS — WORKSHOP 2027** হলো শিক্ষার্থীদের জন্য প্র্যাক্টিক্যাল জেনারেটিভ AI বিষয়ক একটি বিশেষ লাইভ সেশন।\n\n• **সময় ও তারিখ:** ৯ ডিসেম্বর (বুধবার), রাত ৯:৩০ মিনিট (One-Night Online Live Meeting)।\n• **প্ল্যাটফর্ম:** Google Meet (অনলাইনে যেকোনো জায়গা থেকে যুক্ত হওয়া যাবে)।\n• **আয়োজক ও স্পন্সর:** আয়োজনে Bismahsoft Ltd এবং মেইন স্পন্সর Neer Fashion।\n• **মেইন স্পিকার:** Sakibul Islam Sabbir (Mentor - Generative AI, Designer & Vibe Coder)।\n• **টিকিট ও রেজিস্ট্রেশন:** `/workshop` পেজে গিয়ে “Register Now / Buy Ticket” বাটনে ক্লিক করে SupportKori থেকে অফিশিয়াল আসন বুক করা যাবে। অংশগ্রহণকারীদের জন্য সার্টিফিকেটের ব্যবস্থাও রয়েছে।",
     answerEn:
@@ -529,11 +527,11 @@ const OFFLINE_BUCKETS: OfflineKnowledgeBucket[] = [
       "reel",
       "ডিজাইন কনসেপ্ট",
     ],
-    routeHrefs: ["/projects", "/portfolio"],
+    routeHrefs: ["/portfolio", "/education"],
     answerBn:
-      "সাব্বির স্যারের তৈরি উল্লেখযোগ্য প্রজেক্ট ও পোর্টফোলিও কাজগুলো দুটি পেজে সাজানো আছে:\n\n• **Projects (`/projects`):** ৬টি ফুল-স্ট্যাক ওয়েবসাইট (E-Commerce, EdTech, SaaS AI Automation, Creative Agency, FinTech, Healthcare Booking) এবং ৪টি নেটিভ অ্যান্ড্রয়েড অ্যাপ (Task Companion, Delivery Tracker, Student Quiz App, Expense Ledger)।\n• **Portfolio (`/portfolio`):** ৩৬টি ক্লায়েন্ট ডিজাইন কনসেপ্ট, ৪টি লং-ফর্ম ভিডিও (যেমন: Barnoi Lifestyle TVC, Nafees Selim Podcast) এবং শর্ট-ফর্ম ভার্টিক্যাল রিলস।",
+      "সাব্বির স্যারের সব সৃজনশীল ও ইঞ্জিনিয়ারিং কাজ এখন **Portfolio (`/portfolio`)** পেজে ৪টি আলাদা সেকশনে সাজানো আছে:\n\n• **Design Section:** ৩৬টি ক্লায়েন্ট ডিজাইন কনসেপ্ট (All Works-এ ৪×২ = ৮টি এবং Design ট্যাবে সবগুলো সিরিয়াল অনুযায়ী)।\n• **Video Section:** ৪টি লং-ফর্ম ভিডিও ও ৪টি শর্ট-ফর্ম ভার্টিক্যাল রিলস।\n• **Website Development:** ৬টি ফুল-স্ট্যাক ওয়েবসাইট (E-Commerce, EdTech, SaaS AI Automation, Creative Agency, FinTech, Healthcare Booking)।\n• **Android App Development:** ৪টি নেটিভ অ্যান্ড্রয়েড অ্যাপ (Task Companion, Delivery Tracker, Student Quiz App, Expense Ledger)।\n\nআর কোর্স, ওয়ার্কশপ ও বইসমূহ রয়েছে **Education (`/education`)** প্ল্যাটফর্মে।",
     answerEn:
-      "Explore all engineering and creative work across `/projects` (6 full-stack websites, 4 native Android apps, Workshop & Courses) and `/portfolio` (36 graphic design concepts, long-form commercials/podcasts & short-form vertical reels).",
+      "All creative and engineering work lives in **Portfolio (`/portfolio`)** across four sections: Design (36 concepts), Video (4 long-form + 4 short-form reels), Website Development (6 full-stack builds), and Android App Development (4 mobile apps). Courses, workshops, and published books live in **Education (`/education`)**.",
   },
   {
     id: "contact",

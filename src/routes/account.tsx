@@ -128,7 +128,7 @@ export const Route = createFileRoute("/account")({
 
 const NAV = [
   { label: "Home", href: "/" },
-  { label: "Projects", href: "/projects" },
+  { label: "Education", href: "/education" },
   { label: "Portfolio", href: "/portfolio" },
   { label: "About Me", href: "/about-me" },
   { label: "Thankful", href: "/thankful" },
@@ -2246,7 +2246,10 @@ function AccountPage() {
                               | "/courses"
                               | "/graphic-design-course"
                               | "/workshop"
+                              | "/books"
+                              | "/education"
                               | "/projects"
+                              | "/portfolio"
                               | "/contact"
                           }
                           className="inline-flex h-8 items-center gap-1 rounded-full bg-primary px-3.5 text-[11px] font-semibold text-primary-foreground"
@@ -2930,7 +2933,10 @@ function AccountPage() {
                                         | "/courses"
                                         | "/graphic-design-course"
                                         | "/workshop"
+                                        | "/books"
+                                        | "/education"
                                         | "/projects"
+                                        | "/portfolio"
                                         | "/contact"
                                     }
                                     className="inline-flex h-9 items-center gap-1.5 rounded-full bg-primary px-4 text-[11px] font-semibold text-primary-foreground shadow-sm transition-transform hover:scale-105"
@@ -3069,8 +3075,11 @@ function AccountPage() {
                                 </option>
                                 <option value="/books">Published Books Library (/books)</option>
                                 <option value="/workshop">AI Workshop 2027 (/workshop)</option>
-                                <option value="/projects">
-                                  Projects &amp; Courses (/projects)
+                                <option value="/education">
+                                  Education Platform — Courses, Workshops &amp; Books (/education)
+                                </option>
+                                <option value="/portfolio">
+                                  Portfolio — Design, Video, Web &amp; Android (/portfolio)
                                 </option>
                                 <option value="/contact">Contact Page (/contact)</option>
                               </select>
