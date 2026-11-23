@@ -1,8 +1,5 @@
-const CACHE_NAME = "ss-sabbir-pwa-v4";
+const CACHE_NAME = "ss-sabbir-pwa-v5";
 const PRECACHE_ASSETS = [
-  "/",
-  "/bismah",
-  "/education",
   "/manifest.webmanifest",
   "/favicon.ico",
   "/favicon.png",

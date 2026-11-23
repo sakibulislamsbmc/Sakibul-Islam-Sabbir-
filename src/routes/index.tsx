@@ -56,7 +56,7 @@ const IMAGES = [
   ],
 ];
 
-const clamp = (v: number, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const clamp = (v: number, a = 0, b = 1) => (Number.isFinite(v) ? Math.min(b, Math.max(a, v)) : a);
 
 function Pill({ icon: Icon, children }: { icon: typeof Code; children: React.ReactNode }) {
   return (
@@ -182,6 +182,10 @@ function Index() {
       const el = ref.current;
       if (!el) return;
       const total = el.offsetHeight - window.innerHeight;
+      if (!Number.isFinite(total) || total <= 0) {
+        setP(0);
+        return;
+      }
       setP(clamp(-el.getBoundingClientRect().top / total) * (SLIDES.length - 1));
     };
     onScroll();
@@ -260,18 +264,20 @@ function Index() {
           <div className="relative z-10 mx-auto flex h-full w-full max-w-7xl flex-col items-center gap-4 px-4 py-8 pt-20 sm:px-6 md:flex-row md:gap-12 md:py-20 lg:gap-20 lg:px-8">
             <div className="relative z-40 order-first flex h-[45%] w-full items-center justify-center [perspective:1200px] md:order-last md:h-full md:w-1/2">
               {IMAGES.map(([src, alt], i) => {
-                const d = p - i; // >0 means flipped away
+                const safeP = Number.isFinite(p) ? p : 0;
+                const d = safeP - i; // >0 means flipped away
                 const out = clamp(d);
                 const behind = clamp(-d, 0, 3);
+                const opacityVal = clamp(d >= 0 ? 1 - out : 1 - behind * 0.15);
                 const style =
                   d >= 0
                     ? {
                         transform: `translateY(${-out * 120}%) rotateX(${out * 25}deg) scale(${1 - out * 0.1})`,
-                        opacity: 1 - out,
+                        opacity: opacityVal,
                       }
                     : {
                         transform: `translateY(${behind * 4}%) scale(${1 - behind * 0.05})`,
-                        opacity: 1 - behind * 0.15,
+                        opacity: opacityVal,
                       };
                 return (
                   <div
@@ -286,7 +292,8 @@ function Index() {
             </div>
             <div className="relative z-50 order-last flex h-[55%] w-full items-start md:order-first md:h-full md:w-1/2 md:items-center">
               {SLIDES.map((s, i) => {
-                const d = p - i;
+                const safeP = Number.isFinite(p) ? p : 0;
+                const d = safeP - i;
                 const op = clamp(1 - Math.abs(d) * 1.4);
                 return (
                   <div

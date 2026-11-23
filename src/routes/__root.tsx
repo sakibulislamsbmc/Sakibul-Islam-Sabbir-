@@ -148,7 +148,20 @@ function RootComponent() {
       window.__deferredPwaPrompt = e as BeforeInstallPromptEvent;
     };
 
+    const onVitePreloadError = () => {
+      try {
+        const key = "__vite_preload_retry";
+        if (!sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, "1");
+          window.location.reload();
+        }
+      } catch {
+        // Ignore storage errors
+      }
+    };
+
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("vite:preloadError", onVitePreloadError);
 
     if ("serviceWorker" in navigator) {
       if (import.meta.env.PROD) {
@@ -169,6 +182,7 @@ function RootComponent() {
 
     return () => {
       window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("vite:preloadError", onVitePreloadError);
     };
   }, []);
 
