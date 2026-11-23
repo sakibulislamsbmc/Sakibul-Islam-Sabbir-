@@ -27,9 +27,11 @@ import {
   SkipBack,
   SkipForward,
   SlidersHorizontal,
+  Smartphone,
   Sun,
   Trash2,
   Upload,
+  WifiOff,
   X,
 } from "lucide-react";
 import {
@@ -47,6 +49,7 @@ import {
   type BismahViewStyle,
 } from "@/data/bismah-audio-data";
 import {
+  attachAudioFileToTrack,
   clearAllOfflineAudioEntries,
   downloadTrackForOffline,
   formatStorageMb,
@@ -56,6 +59,7 @@ import {
   saveLocalAudioFileToVault,
   type OfflineAudioMeta,
 } from "@/lib/offline-audio-storage";
+import { usePWAInstall } from "@/hooks/use-pwa-install";
 
 interface YTPlayerFull {
   destroy: () => void;
@@ -105,6 +109,7 @@ const STORAGE_KEYS = {
   accent: "bismah_audiobook_accent_v2",
   viewStyle: "bismah_audiobook_view_style_v2",
   clipboardPrompt: "bismah_audiobook_clipboard_prompt_v2",
+  serialAutoPlay: "bismah_audiobook_serial_autoplay_v2",
 };
 
 interface DownloadProgressState {
@@ -120,6 +125,7 @@ export function BismahAudioPlayerApp({
   fullHeight?: boolean;
 }) {
   const uniqueId = useId().replace(/:/g, "");
+  const { isInstallable, isInstalled, isIOS, installApp } = usePWAInstall();
 
   // Settings & Preferences (Clean Light Mode + Website Minimal default)
   const [appearance, setAppearance] = useState<BismahAppearanceMode>("light");
@@ -127,6 +133,8 @@ export function BismahAudioPlayerApp({
   const [accentId, setAccentId] = useState<BismahThemeAccentId>("website-minimal");
   const [viewStyle, setViewStyle] = useState<BismahViewStyle>("grid");
   const [clipboardPromptEnabled, setClipboardPromptEnabled] = useState<boolean>(true);
+  const [serialAutoPlay, setSerialAutoPlay] = useState<boolean>(true);
+  const [isOnline, setIsOnline] = useState<boolean>(true);
 
   // Screens & Modals
   const [screen, setScreen] = useState<"library" | "settings">("library");
@@ -144,6 +152,8 @@ export function BismahAudioPlayerApp({
   const [tracks, setTracks] = useState<BismahAudioTrack[]>([]);
   const [offlineMap, setOfflineMap] = useState<Record<string, OfflineAudioMeta>>({});
   const [downloadsMap, setDownloadsMap] = useState<Record<string, DownloadProgressState>>({});
+  const [blockedDownloadIds, setBlockedDownloadIds] = useState<Record<string, boolean>>({});
+  const attachTargetTrackRef = useRef<BismahAudioTrack | null>(null);
 
   // Toast Notification
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -162,24 +172,31 @@ export function BismahAudioPlayerApp({
 
   // Media Refs
   const htmlAudioRef = useRef<HTMLAudioElement | null>(null);
-  const nativeBlobUrlRef = useRef<string | null>(null);
+  const preloadedBlobUrlsRef = useRef<Map<string, string>>(new Map());
   const ytHostRef = useRef<HTMLDivElement | null>(null);
   const ytPlayerRef = useRef<YTPlayerFull | null>(null);
   const ytReadyRef = useRef<boolean>(false);
   const pendingYtVideoIdRef = useRef<string | null>(null);
   const ytPollTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const attachFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Latest-state refs for async callbacks
+  // Latest-state refs for async & lock-screen MediaSession callbacks
   const tracksRef = useRef<BismahAudioTrack[]>(tracks);
+  const offlineMapRef = useRef<Record<string, OfflineAudioMeta>>(offlineMap);
   const activeTrackIdRef = useRef<string | null>(activeTrackId);
   const loopModeRef = useRef<BismahLoopMode>(loopMode);
   const speedRef = useRef<BismahPlaybackSpeed>(playbackSpeed);
+  const serialAutoPlayRef = useRef<boolean>(serialAutoPlay);
+  const isOnlineRef = useRef<boolean>(isOnline);
   const activeEngineRef = useRef<"none" | "youtube" | "native">(activeEngine);
 
   useEffect(() => {
     tracksRef.current = tracks;
   }, [tracks]);
+  useEffect(() => {
+    offlineMapRef.current = offlineMap;
+  }, [offlineMap]);
   useEffect(() => {
     activeTrackIdRef.current = activeTrackId;
   }, [activeTrackId]);
@@ -189,6 +206,12 @@ export function BismahAudioPlayerApp({
   useEffect(() => {
     speedRef.current = playbackSpeed;
   }, [playbackSpeed]);
+  useEffect(() => {
+    serialAutoPlayRef.current = serialAutoPlay;
+  }, [serialAutoPlay]);
+  useEffect(() => {
+    isOnlineRef.current = isOnline;
+  }, [isOnline]);
   useEffect(() => {
     activeEngineRef.current = activeEngine;
   }, [activeEngine]);
@@ -203,14 +226,24 @@ export function BismahAudioPlayerApp({
     return () => window.clearTimeout(id);
   }, [toastMsg]);
 
-  // System dark mode detection
+  // System dark mode & online/offline connectivity listeners
   useEffect(() => {
     if (typeof window === "undefined") return;
+    setIsOnline(navigator.onLine);
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     setSystemPrefersDark(mq.matches);
     const handler = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
     mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+      mq.removeEventListener("change", handler);
+    };
   }, []);
 
   const isDark = appearance === "dark" || (appearance === "system" && systemPrefersDark);
@@ -229,10 +262,20 @@ export function BismahAudioPlayerApp({
     [tracks, activeTrackId],
   );
 
+  const getTrackArtworkSrc = useCallback(
+    (track: BismahAudioTrack): string => {
+      const cached = offlineMap[track.id]?.cachedThumbnailUrl;
+      if (cached) return cached;
+      return track.thumbnail || "";
+    },
+    [offlineMap],
+  );
+
   // Hydrate saved user library & preferences from localStorage + IndexedDB (zero sign-in)
   const refreshOfflineStorage = useCallback(async () => {
     const meta = await listOfflineAudioMeta();
     setOfflineMap(meta);
+    offlineMapRef.current = meta;
   }, []);
 
   useEffect(() => {
@@ -259,6 +302,10 @@ export function BismahAudioPlayerApp({
       const savedClip = window.localStorage.getItem(STORAGE_KEYS.clipboardPrompt);
       if (savedClip === "false") {
         setClipboardPromptEnabled(false);
+      }
+      const savedSerial = window.localStorage.getItem(STORAGE_KEYS.serialAutoPlay);
+      if (savedSerial === "false") {
+        setSerialAutoPlay(false);
       }
       const savedTracksRaw = window.localStorage.getItem(STORAGE_KEYS.tracks);
       if (savedTracksRaw) {
@@ -366,6 +413,16 @@ export function BismahAudioPlayerApp({
     setClipboardPromptEnabled(next);
     try {
       window.localStorage.setItem(STORAGE_KEYS.clipboardPrompt, String(next));
+    } catch {
+      // Ignore
+    }
+  };
+
+  const toggleSerialAutoPlay = () => {
+    const next = !serialAutoPlay;
+    setSerialAutoPlay(next);
+    try {
+      window.localStorage.setItem(STORAGE_KEYS.serialAutoPlay, String(next));
     } catch {
       // Ignore
     }
@@ -510,15 +567,17 @@ export function BismahAudioPlayerApp({
     [updateTrackDuration],
   );
 
-  // Cleanup YouTube player & object URLs on unmount
+  // Cleanup YouTube player & cached audio object URLs on unmount
   useEffect(() => {
+    const blobCache = preloadedBlobUrlsRef.current;
     return () => {
       if (ytPollTimerRef.current !== null) {
         window.clearInterval(ytPollTimerRef.current);
       }
-      if (nativeBlobUrlRef.current) {
-        URL.revokeObjectURL(nativeBlobUrlRef.current);
+      for (const url of blobCache.values()) {
+        URL.revokeObjectURL(url);
       }
+      blobCache.clear();
       if (ytPlayerRef.current) {
         try {
           ytPlayerRef.current.destroy();
@@ -530,37 +589,171 @@ export function BismahAudioPlayerApp({
     };
   }, []);
 
-  // Preload YouTube IFrame script eagerly so first play is instant
+  // Preload YouTube IFrame script only when online (never hangs offline)
   useEffect(() => {
-    loadYouTubeIframeApi().catch(() => {});
+    if (isOnline) {
+      loadYouTubeIframeApi().catch(() => {});
+    }
+  }, [isOnline]);
+
+  // Eagerly resolve & cache an offline track's Blob URL in memory so screen-off serial auto-next
+  // can start the next track synchronously inside onEnded without losing mobile OS background audio focus!
+  const preloadOfflineBlobUrl = useCallback(async (trackId: string): Promise<string | null> => {
+    const existing = preloadedBlobUrlsRef.current.get(trackId);
+    if (existing) return existing;
+
+    const entry = await getOfflineAudioEntry(trackId);
+    if (!entry?.hasAudioBlob || !entry.audioData || entry.audioData.byteLength < 4096) {
+      return null;
+    }
+
+    const blob = new Blob([entry.audioData], {
+      type: entry.mimeType || "audio/mp4",
+    });
+    const url = URL.createObjectURL(blob);
+    preloadedBlobUrlsRef.current.set(trackId, url);
+    return url;
   }, []);
 
-  // Start playing a specific track (handles BOTH real offline audio Blob & YouTube stream reliably!)
+  // Keep the next 2 offline-ready tracks preloaded in memory for seamless screen-off serial playback
+  const preloadUpcomingOfflineTracks = useCallback(
+    (currentTrackId: string) => {
+      const list = tracksRef.current;
+      const idx = list.findIndex((t) => t.id === currentTrackId);
+      if (idx < 0) return;
+
+      const candidates: BismahAudioTrack[] = [];
+      for (let step = 1; step <= list.length && candidates.length < 2; step++) {
+        const candidate = list[(idx + step) % list.length];
+        if (
+          candidate &&
+          candidate.id !== currentTrackId &&
+          offlineMapRef.current[candidate.id]?.hasAudioBlob
+        ) {
+          candidates.push(candidate);
+        }
+      }
+      for (const c of candidates) {
+        preloadOfflineBlobUrl(c.id).catch(() => {});
+      }
+    },
+    [preloadOfflineBlobUrl],
+  );
+
+  // Sync mobile lock-screen / notification shade metadata (MediaSession API)
+  const syncMediaSessionMetadata = useCallback((track: BismahAudioTrack) => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    try {
+      const cachedThumb = offlineMapRef.current[track.id]?.cachedThumbnailUrl;
+      const artworkSrc = cachedThumb || track.thumbnail || "/pwa-512x512.png";
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: track.title,
+        artist: track.channelTitle || "Bismah Audio Book",
+        album: "Bismah Audio Book",
+        artwork: [
+          { src: artworkSrc, sizes: "512x512", type: "image/jpeg" },
+          { src: "/pwa-512x512.png", sizes: "512x512", type: "image/png" },
+        ],
+      });
+    } catch {
+      // Ignore on unsupported browsers
+    }
+  }, []);
+
+  const syncMediaSessionPosition = useCallback((pos: number, dur: number, rate: number) => {
+    if (
+      typeof navigator === "undefined" ||
+      !("mediaSession" in navigator) ||
+      typeof navigator.mediaSession.setPositionState !== "function"
+    ) {
+      return;
+    }
+    if (!Number.isFinite(dur) || dur <= 0 || !Number.isFinite(pos) || pos < 0) return;
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: dur,
+        playbackRate: rate || 1,
+        position: Math.min(pos, dur),
+      });
+    } catch {
+      // Ignore Safari edge cases
+    }
+  }, []);
+
+  // Synchronous native HTML5 audio starter (critical for mobile screen-off background serial auto-advance!)
+  const startNativeBlobSynchronously = useCallback(
+    (track: BismahAudioTrack, blobUrl: string) => {
+      const audio = htmlAudioRef.current;
+      if (!audio) return false;
+
+      if (ytPlayerRef.current && ytReadyRef.current) {
+        try {
+          ytPlayerRef.current.pauseVideo();
+        } catch {
+          // Ignore
+        }
+      }
+
+      setActiveTrackId(track.id);
+      activeTrackIdRef.current = track.id;
+      setCurrentTime(0);
+      setDuration(track.durationSec || offlineMapRef.current[track.id]?.durationSec || 0);
+      setActiveEngine("native");
+      activeEngineRef.current = "native";
+      syncMediaSessionMetadata(track);
+
+      audio.src = blobUrl;
+      audio.playbackRate = speedRef.current;
+      audio.currentTime = 0;
+
+      const playPromise = audio.play();
+      if (playPromise) {
+        playPromise
+          .then(() => {
+            setIsBuffering(false);
+            setIsPlaying(true);
+            if ("mediaSession" in navigator) {
+              navigator.mediaSession.playbackState = "playing";
+            }
+            preloadUpcomingOfflineTracks(track.id);
+          })
+          .catch(() => {
+            setIsBuffering(false);
+            setIsPlaying(false);
+          });
+      }
+      return true;
+    },
+    [syncMediaSessionMetadata, preloadUpcomingOfflineTracks],
+  );
+
+  // Start playing a specific track:
+  // 1) If offline audio binary exists in IndexedDB -> plays 100% offline & screen-off via native <audio>
+  // 2) If online & not downloaded yet -> plays seamlessly via YouTube audio engine
+  // 3) If offline & not downloaded yet -> informs user clearly without failing silently
   const playTrack = useCallback(
     async (track: BismahAudioTrack) => {
       setActiveTrackId(track.id);
       activeTrackIdRef.current = track.id;
       setCurrentTime(0);
-      setDuration(track.durationSec || 0);
+      setDuration(track.durationSec || offlineMapRef.current[track.id]?.durationSec || 0);
       setIsBuffering(true);
+      syncMediaSessionMetadata(track);
 
-      // Pause both engines first
+      // Fast synchronous path if offline Blob URL is already preloaded in memory (essential for screen-off transitions!)
+      const cachedBlobUrl = preloadedBlobUrlsRef.current.get(track.id);
+      if (cachedBlobUrl && htmlAudioRef.current) {
+        startNativeBlobSynchronously(track, cachedBlobUrl);
+        return;
+      }
+
       stopBothEngines();
 
-      // Check if we have a REAL audio binary stored in IndexedDB (either real extracted audio or local MP3/M4A)
-      const offlineMeta = offlineMap[track.id];
+      // Check IndexedDB vault for REAL offline audio binary (downloaded YouTube audio or local MP3/M4A)
+      const offlineMeta = offlineMapRef.current[track.id];
       if (offlineMeta?.hasAudioBlob || track.sourceType === "local") {
-        const entry = await getOfflineAudioEntry(track.id);
-        if (entry?.hasAudioBlob && entry.audioData && htmlAudioRef.current) {
-          if (nativeBlobUrlRef.current) {
-            URL.revokeObjectURL(nativeBlobUrlRef.current);
-          }
-          const blob = new Blob([entry.audioData], {
-            type: entry.mimeType || "audio/mpeg",
-          });
-          const blobUrl = URL.createObjectURL(blob);
-          nativeBlobUrlRef.current = blobUrl;
-
+        const blobUrl = await preloadOfflineBlobUrl(track.id);
+        if (blobUrl && htmlAudioRef.current) {
           const audio = htmlAudioRef.current;
           setActiveEngine("native");
           activeEngineRef.current = "native";
@@ -572,20 +765,33 @@ export function BismahAudioPlayerApp({
             await audio.play();
             setIsBuffering(false);
             setIsPlaying(true);
+            if ("mediaSession" in navigator) {
+              navigator.mediaSession.playbackState = "playing";
+            }
+            preloadUpcomingOfflineTracks(track.id);
             return;
           } catch {
-            // If native blob fails for any codec reason and track has youtubeId, fall back seamlessly to YouTube engine!
-            if (!track.youtubeId) {
+            if (!track.youtubeId || !isOnlineRef.current) {
               setIsBuffering(false);
               setIsPlaying(false);
-              showToast("Tap play again to start audio playback.");
+              showToast("Tap play again to start offline audio.");
               return;
             }
           }
         }
       }
 
-      // Play real YouTube audio via persistent YouTube IFrame engine (works BOTH before & after Download!)
+      // If device is offline and this track has no downloaded audio binary
+      if (!isOnlineRef.current) {
+        setIsBuffering(false);
+        setIsPlaying(false);
+        setActiveEngine("none");
+        activeEngineRef.current = "none";
+        showToast("Offline mode — Download tracks while online to play without internet.");
+        return;
+      }
+
+      // Play online YouTube audio via persistent YouTube IFrame engine
       if (track.youtubeId) {
         setActiveEngine("youtube");
         activeEngineRef.current = "youtube";
@@ -597,16 +803,49 @@ export function BismahAudioPlayerApp({
         showToast("Audio source unavailable for this track.");
       }
     },
-    [offlineMap, stopBothEngines, ensureYouTubePlayerInitialized, showToast],
+    [
+      stopBothEngines,
+      syncMediaSessionMetadata,
+      startNativeBlobSynchronously,
+      preloadOfflineBlobUrl,
+      preloadUpcomingOfflineTracks,
+      ensureYouTubePlayerInitialized,
+      showToast,
+    ],
   );
 
-  // Wire Track-Ended logic for Loop Mode (Off, Single, Repeat All)
+  // Helper to find the next/previous playable track in serial order (automatically skips un-downloaded tracks when offline!)
+  const findNextPlayableTrack = useCallback(
+    (direction: 1 | -1, wrapAround: boolean): BismahAudioTrack | null => {
+      const list = tracksRef.current;
+      if (list.length === 0) return null;
+      const currIdx = list.findIndex((t) => t.id === activeTrackIdRef.current);
+      const startIdx = currIdx >= 0 ? currIdx : direction === 1 ? -1 : 0;
+
+      for (let step = 1; step <= list.length; step++) {
+        const rawIdx = startIdx + direction * step;
+        if (!wrapAround && (rawIdx < 0 || rawIdx >= list.length)) {
+          return null;
+        }
+        const wrappedIdx = ((rawIdx % list.length) + list.length) % list.length;
+        const candidate = list[wrappedIdx];
+        if (!candidate) continue;
+        // When offline, only advance to tracks that actually have an offline audio binary!
+        if (!isOnlineRef.current && !offlineMapRef.current[candidate.id]?.hasAudioBlob) {
+          continue;
+        }
+        return candidate;
+      }
+      return null;
+    },
+    [],
+  );
+
+  // Wire Track-Ended logic for Serial Playback & Loop Mode (Off, Single, Repeat All)
+  // Runs SYNCHRONOUSLY when the next offline track is preloaded so mobile screen-off playback NEVER drops!
   useEffect(() => {
     handlePlaybackFinishedRef.current = () => {
       const mode = loopModeRef.current;
-      const list = tracksRef.current;
-      const currId = activeTrackIdRef.current;
-      const idx = list.findIndex((t) => t.id === currId);
 
       if (mode === "single") {
         if (activeEngineRef.current === "native" && htmlAudioRef.current) {
@@ -621,26 +860,42 @@ export function BismahAudioPlayerApp({
         return;
       }
 
-      if (idx >= 0 && idx < list.length - 1) {
-        playTrack(list[idx + 1]);
+      if (!serialAutoPlayRef.current && mode !== "all") {
+        setIsPlaying(false);
+        setCurrentTime(0);
         return;
       }
 
-      if (mode === "all" && list.length > 0) {
-        playTrack(list[0]);
+      const nextTrack = findNextPlayableTrack(1, mode === "all");
+      if (nextTrack) {
+        const preloadedUrl = preloadedBlobUrlsRef.current.get(nextTrack.id);
+        if (preloadedUrl && htmlAudioRef.current) {
+          // Synchronous handoff inside onEnded keeps Android/iOS screen-off background playback active!
+          startNativeBlobSynchronously(nextTrack, preloadedUrl);
+          return;
+        }
+        playTrack(nextTrack);
         return;
       }
 
       setIsPlaying(false);
       setCurrentTime(0);
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.playbackState = "paused";
+      }
     };
-  }, [playTrack]);
+  }, [findNextPlayableTrack, startNativeBlobSynchronously, playTrack]);
 
   // Toggle Play / Pause on active track
   const togglePlayPause = useCallback(() => {
     if (!activeTrack) {
-      if (tracks.length > 0) {
-        playTrack(tracks[0]);
+      const firstPlayable = !isOnlineRef.current
+        ? tracks.find((t) => offlineMapRef.current[t.id]?.hasAudioBlob)
+        : tracks[0];
+      if (firstPlayable) {
+        playTrack(firstPlayable);
+      } else if (tracks.length > 0 && !isOnlineRef.current) {
+        showToast("Offline mode — Download tracks while online to play without internet.");
       }
       return;
     }
@@ -649,10 +904,14 @@ export function BismahAudioPlayerApp({
       if (isPlaying) {
         htmlAudioRef.current.pause();
         setIsPlaying(false);
+        if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
       } else {
         htmlAudioRef.current
           .play()
-          .then(() => setIsPlaying(true))
+          .then(() => {
+            setIsPlaying(true);
+            if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
+          })
           .catch(() => playTrack(activeTrack));
       }
       return;
@@ -662,21 +921,21 @@ export function BismahAudioPlayerApp({
       if (isPlaying) {
         ytPlayerRef.current.pauseVideo();
         setIsPlaying(false);
+        if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused";
       } else {
         ytPlayerRef.current.playVideo();
         setIsPlaying(true);
+        if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing";
       }
       return;
     }
 
-    // If neither engine has loaded yet, start the active track cleanly
     playTrack(activeTrack);
-  }, [activeTrack, tracks, isPlaying, playTrack]);
+  }, [activeTrack, tracks, isPlaying, playTrack, showToast]);
 
   const handlePlayPrevious = useCallback(() => {
-    if (tracks.length === 0) return;
+    if (tracksRef.current.length === 0) return;
     if (currentTime > 4) {
-      // Restart current track if more than 4s in
       setCurrentTime(0);
       if (activeEngineRef.current === "native" && htmlAudioRef.current) {
         htmlAudioRef.current.currentTime = 0;
@@ -685,30 +944,130 @@ export function BismahAudioPlayerApp({
       }
       return;
     }
-    const idx = tracks.findIndex((t) => t.id === activeTrackId);
-    const prevIdx = idx > 0 ? idx - 1 : tracks.length - 1;
-    playTrack(tracks[prevIdx]);
-  }, [tracks, activeTrackId, currentTime, playTrack]);
+    const prevTrack = findNextPlayableTrack(-1, true);
+    if (prevTrack) {
+      playTrack(prevTrack);
+    }
+  }, [currentTime, findNextPlayableTrack, playTrack]);
 
   const handlePlayNext = useCallback(() => {
-    if (tracks.length === 0) return;
-    const idx = tracks.findIndex((t) => t.id === activeTrackId);
-    const nextIdx = idx >= 0 && idx < tracks.length - 1 ? idx + 1 : 0;
-    playTrack(tracks[nextIdx]);
-  }, [tracks, activeTrackId, playTrack]);
+    if (tracksRef.current.length === 0) return;
+    const nextTrack = findNextPlayableTrack(1, true);
+    if (nextTrack) {
+      playTrack(nextTrack);
+    }
+  }, [findNextPlayableTrack, playTrack]);
+
+  const seekToSeconds = useCallback(
+    (targetSec: number) => {
+      if (duration <= 0) return;
+      const clamped = Math.max(0, Math.min(duration, targetSec));
+      setCurrentTime(clamped);
+
+      if (activeEngineRef.current === "native" && htmlAudioRef.current) {
+        htmlAudioRef.current.currentTime = clamped;
+      } else if (activeEngineRef.current === "youtube" && ytPlayerRef.current) {
+        ytPlayerRef.current.seekTo(clamped, true);
+      }
+      syncMediaSessionPosition(clamped, duration, speedRef.current);
+    },
+    [duration, syncMediaSessionPosition],
+  );
 
   const handleSeekRatio = (ratio: number) => {
     const safe = Math.max(0, Math.min(1, ratio));
     if (duration <= 0) return;
-    const targetSec = safe * duration;
-    setCurrentTime(targetSec);
-
-    if (activeEngineRef.current === "native" && htmlAudioRef.current) {
-      htmlAudioRef.current.currentTime = targetSec;
-    } else if (activeEngineRef.current === "youtube" && ytPlayerRef.current) {
-      ytPlayerRef.current.seekTo(targetSec, true);
-    }
+    seekToSeconds(safe * duration);
   };
+
+  // Register full Mobile Lock-Screen / Background MediaSession Action Handlers
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    const ms = navigator.mediaSession;
+    const safeSet = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      try {
+        ms.setActionHandler(action, handler);
+      } catch {
+        // Unsupported action on this platform
+      }
+    };
+
+    safeSet("play", () => {
+      if (activeEngineRef.current === "native" && htmlAudioRef.current) {
+        htmlAudioRef.current.play().catch(() => {});
+      } else if (activeEngineRef.current === "youtube" && ytPlayerRef.current) {
+        ytPlayerRef.current.playVideo();
+      } else if (activeTrack) {
+        playTrack(activeTrack);
+      }
+    });
+    safeSet("pause", () => {
+      stopBothEngines();
+      setIsPlaying(false);
+      ms.playbackState = "paused";
+    });
+    safeSet("stop", () => {
+      stopBothEngines();
+      setIsPlaying(false);
+      ms.playbackState = "none";
+    });
+    safeSet("previoustrack", () => handlePlayPrevious());
+    safeSet("nexttrack", () => handlePlayNext());
+    safeSet("seekbackward", (details) => {
+      const offset = details.seekOffset || 10;
+      const curr =
+        activeEngineRef.current === "native" && htmlAudioRef.current
+          ? htmlAudioRef.current.currentTime
+          : currentTime;
+      seekToSeconds(curr - offset);
+    });
+    safeSet("seekforward", (details) => {
+      const offset = details.seekOffset || 10;
+      const curr =
+        activeEngineRef.current === "native" && htmlAudioRef.current
+          ? htmlAudioRef.current.currentTime
+          : currentTime;
+      seekToSeconds(curr + offset);
+    });
+    safeSet("seekto", (details) => {
+      if (typeof details.seekTime === "number") {
+        seekToSeconds(details.seekTime);
+      }
+    });
+
+    return () => {
+      safeSet("play", null);
+      safeSet("pause", null);
+      safeSet("stop", null);
+      safeSet("previoustrack", null);
+      safeSet("nexttrack", null);
+      safeSet("seekbackward", null);
+      safeSet("seekforward", null);
+      safeSet("seekto", null);
+    };
+  }, [
+    activeTrack,
+    currentTime,
+    handlePlayNext,
+    handlePlayPrevious,
+    playTrack,
+    seekToSeconds,
+    stopBothEngines,
+  ]);
+
+  // Keep MediaSession playbackState synced
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = activeTrack
+        ? isPlaying
+          ? "playing"
+          : "paused"
+        : "none";
+    } catch {
+      // Ignore
+    }
+  }, [activeTrack, isPlaying]);
 
   const handleChangeSpeed = (spd: BismahPlaybackSpeed) => {
     setPlaybackSpeed(spd);
@@ -719,6 +1078,7 @@ export function BismahAudioPlayerApp({
     if (ytPlayerRef.current && ytReadyRef.current) {
       ytPlayerRef.current.setPlaybackRate?.(spd);
     }
+    syncMediaSessionPosition(currentTime, duration, spd);
   };
 
   const handleCycleLoopMode = () => {
@@ -793,7 +1153,8 @@ export function BismahAudioPlayerApp({
 
     try {
       const result = await resolveYouTubeLinkTracks(trimmed);
-      const nextTracks = [...result.tracks, ...tracks];
+      // Append in serial order so Track 1 -> Track 2 -> Track 3 play sequentially
+      const nextTracks = [...tracks, ...result.tracks];
       persistTracks(nextTracks);
 
       setAddModalOpen(false);
@@ -813,49 +1174,128 @@ export function BismahAudioPlayerApp({
     }
   };
 
-  const handleImportLocalAudioFile = async (file: File) => {
-    const trackId = `local-${Date.now()}`;
-    const cleanTitle = file.name.replace(/\.[^/.]+$/, "");
+  const handleImportLocalAudioFiles = async (fileList: FileList) => {
+    const files = Array.from(fileList);
+    if (files.length === 0) return;
+
+    const addedTracks: BismahAudioTrack[] = [];
+    const addedMeta: Record<string, OfflineAudioMeta> = {};
+    const baseTs = Date.now();
+
     try {
-      const meta = await saveLocalAudioFileToVault(trackId, cleanTitle, "Local Audio Book", file);
-      const newTrack: BismahAudioTrack = {
-        id: trackId,
-        sourceType: "local",
-        title: cleanTitle,
-        channelTitle: "Local Audio Book",
-        durationSec: 0,
-        thumbnail: "",
-        sourceUrl: file.name,
-        addedAt: Date.now(),
-      };
-      persistTracks([newTrack, ...tracks]);
-      setOfflineMap((prev) => ({ ...prev, [trackId]: meta }));
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const trackId = `local-${baseTs}-${i}`;
+        const cleanTitle = file.name.replace(/\.[^/.]+$/, "");
+        const meta = await saveLocalAudioFileToVault(trackId, cleanTitle, "Offline Audio", file);
+        addedMeta[trackId] = meta;
+        addedTracks.push({
+          id: trackId,
+          sourceType: "local",
+          title: cleanTitle,
+          channelTitle: "Offline Audio",
+          durationSec: 0,
+          thumbnail: "",
+          sourceUrl: file.name,
+          addedAt: baseTs + i,
+        });
+      }
+
+      persistTracks([...tracks, ...addedTracks]);
+      setOfflineMap((prev) => {
+        const next = { ...prev, ...addedMeta };
+        offlineMapRef.current = next;
+        return next;
+      });
       setAddModalOpen(false);
       setUrlInput("");
-      showToast(`Added "${cleanTitle}" for offline playback`);
+
+      if (addedTracks.length === 1) {
+        showToast(`Added "${addedTracks[0].title}" — Offline & Screen-Off Ready`);
+      } else {
+        showToast(`Added ${addedTracks.length} audio files in serial order`);
+      }
     } catch {
-      setUrlError("Could not save this audio file to offline storage.");
+      setUrlError("Could not save audio files to offline storage.");
+    }
+  };
+
+  const handleAttachAudioFileToTrack = async (file: File) => {
+    const target = attachTargetTrackRef.current;
+    attachTargetTrackRef.current = null;
+    if (!target) return;
+
+    try {
+      const meta = await attachAudioFileToTrack(target, file);
+      const oldUrl = preloadedBlobUrlsRef.current.get(target.id);
+      if (oldUrl) {
+        URL.revokeObjectURL(oldUrl);
+        preloadedBlobUrlsRef.current.delete(target.id);
+      }
+      setOfflineMap((prev) => {
+        const next = { ...prev, [target.id]: meta };
+        offlineMapRef.current = next;
+        return next;
+      });
+      setBlockedDownloadIds((prev) => {
+        const copy = { ...prev };
+        delete copy[target.id];
+        return copy;
+      });
+      preloadOfflineBlobUrl(target.id).catch(() => {});
+      showToast(`"${target.title}" is now Offline & Screen-Off Ready`);
+    } catch {
+      showToast("Could not attach audio file. Please try another MP3/M4A file.");
     }
   };
 
   const handleDownloadTrack = async (track: BismahAudioTrack) => {
     if (downloadsMap[track.id]) return;
 
+    if (!isOnlineRef.current) {
+      showToast("Connect to internet to download tracks for offline listening.");
+      return;
+    }
+
     setDownloadsMap((prev) => ({
       ...prev,
-      [track.id]: { percent: 10, status: "Connecting to YouTube ..." },
+      [track.id]: { percent: 8, status: "Connecting to YouTube ..." },
     }));
 
     try {
-      const meta = await downloadTrackForOffline(track, (percent, status) => {
+      const result = await downloadTrackForOffline(track, (percent, status) => {
         setDownloadsMap((prev) => ({
           ...prev,
           [track.id]: { percent, status },
         }));
       });
 
-      setOfflineMap((prev) => ({ ...prev, [track.id]: meta }));
-      showToast(`Downloaded "${track.title}"`);
+      if (result.durationSec && result.durationSec > 0) {
+        updateTrackDuration(track.id, result.durationSec);
+      }
+
+      setOfflineMap((prev) => {
+        const next = { ...prev, [track.id]: result.meta };
+        offlineMapRef.current = next;
+        return next;
+      });
+
+      if (result.meta.hasAudioBlob) {
+        setBlockedDownloadIds((prev) => {
+          const copy = { ...prev };
+          delete copy[track.id];
+          return copy;
+        });
+        preloadOfflineBlobUrl(track.id).catch(() => {});
+        showToast(
+          `Downloaded "${track.title}" (${formatStorageMb(result.meta.sizeBytes)}) — Offline & Screen-Off Ready`,
+        );
+      } else {
+        setBlockedDownloadIds((prev) => ({ ...prev, [track.id]: true }));
+        showToast(
+          "YouTube blocked direct download for this video. Tap Attach to add an MP3/M4A file for offline playback.",
+        );
+      }
     } catch {
       showToast("Download failed. Please try again.");
     } finally {
@@ -875,6 +1315,11 @@ export function BismahAudioPlayerApp({
       setActiveEngine("none");
       setNowPlayingExpanded(false);
     }
+    const oldBlobUrl = preloadedBlobUrlsRef.current.get(track.id);
+    if (oldBlobUrl) {
+      URL.revokeObjectURL(oldBlobUrl);
+      preloadedBlobUrlsRef.current.delete(track.id);
+    }
     const next = tracks.filter((t) => t.id !== track.id);
     persistTracks(next);
 
@@ -882,15 +1327,26 @@ export function BismahAudioPlayerApp({
     setOfflineMap((prev) => {
       const copy = { ...prev };
       delete copy[track.id];
+      offlineMapRef.current = copy;
+      return copy;
+    });
+    setBlockedDownloadIds((prev) => {
+      const copy = { ...prev };
+      delete copy[track.id];
       return copy;
     });
     showToast(`Removed "${track.title}"`);
   };
 
-  // Storage metrics for Settings screen
+  // Storage & offline readiness metrics
   const totalStorageBytes = useMemo(
     () => Object.values(offlineMap).reduce((sum, entry) => sum + (entry.sizeBytes || 0), 0),
     [offlineMap],
+  );
+
+  const offlineReadyCount = useMemo(
+    () => tracks.filter((t) => Boolean(offlineMap[t.id]?.hasAudioBlob)).length,
+    [tracks, offlineMap],
   );
 
   const uniquePlaylistCount = useMemo(() => {
@@ -918,11 +1374,11 @@ export function BismahAudioPlayerApp({
         isDark ? "border-white/10" : "border-border"
       } ${fullHeight ? "min-h-[calc(100vh-8rem)]" : "min-h-[640px]"}`}
     >
-      {/* Permanently Mounted Native HTML5 Audio Element (User-gesture safe for offline files/blobs) */}
+      {/* Permanently Mounted Native HTML5 Audio Element (True Offline & Mobile Screen-Off Engine) */}
       <audio
         ref={htmlAudioRef}
         playsInline
-        preload="metadata"
+        preload="auto"
         onLoadedMetadata={(e) => {
           const d = e.currentTarget.duration;
           if (Number.isFinite(d) && d > 0) {
@@ -930,22 +1386,34 @@ export function BismahAudioPlayerApp({
             if (activeTrackIdRef.current) {
               updateTrackDuration(activeTrackIdRef.current, d);
             }
+            syncMediaSessionPosition(e.currentTarget.currentTime, d, e.currentTarget.playbackRate);
           }
         }}
         onTimeUpdate={(e) => {
           if (activeEngineRef.current === "native") {
-            setCurrentTime(e.currentTarget.currentTime);
+            const curr = e.currentTarget.currentTime;
+            const dur = e.currentTarget.duration;
+            setCurrentTime(curr);
+            if (Number.isFinite(dur) && dur > 0) {
+              syncMediaSessionPosition(curr, dur, e.currentTarget.playbackRate);
+            }
           }
         }}
         onPlay={() => {
           if (activeEngineRef.current === "native") {
             setIsPlaying(true);
             setIsBuffering(false);
+            if ("mediaSession" in navigator) {
+              navigator.mediaSession.playbackState = "playing";
+            }
           }
         }}
         onPause={() => {
           if (activeEngineRef.current === "native") {
             setIsPlaying(false);
+            if ("mediaSession" in navigator) {
+              navigator.mediaSession.playbackState = "paused";
+            }
           }
         }}
         onEnded={() => {
@@ -964,16 +1432,32 @@ export function BismahAudioPlayerApp({
         <div id={`bismah-yt-engine-${uniqueId}`} ref={ytHostRef} />
       </div>
 
-      {/* Hidden local file input for optional native MP3/M4A audiobook import */}
+      {/* Hidden multi-file input for importing local MP3/M4A audiobook chapters in serial order */}
       <input
         ref={fileInputRef}
+        type="file"
+        multiple
+        accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac"
+        className="hidden"
+        onChange={(e) => {
+          const files = e.target.files;
+          if (files && files.length > 0) {
+            handleImportLocalAudioFiles(files);
+            e.target.value = "";
+          }
+        }}
+      />
+
+      {/* Hidden single-file input for attaching an offline audio file to an existing YouTube card */}
+      <input
+        ref={attachFileInputRef}
         type="file"
         accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) {
-            handleImportLocalAudioFile(file);
+            handleAttachAudioFileToTrack(file);
             e.target.value = "";
           }
         }}
@@ -1017,10 +1501,15 @@ export function BismahAudioPlayerApp({
                     </Link>
                   )}
                 </div>
-                <p className={`truncate text-xs ${mutedText}`}>
-                  {tracks.length === 0
-                    ? "Tap + to add audio"
-                    : `${tracks.length} ${tracks.length === 1 ? "track" : "tracks"}`}
+                <p className={`flex items-center gap-1.5 truncate text-xs ${mutedText}`}>
+                  {!isOnline && <WifiOff className="h-3 w-3 shrink-0 text-amber-500" />}
+                  <span className="truncate">
+                    {!isOnline
+                      ? `Offline Mode · ${offlineReadyCount} ready`
+                      : tracks.length === 0
+                        ? "Tap + to add audio"
+                        : `${tracks.length} ${tracks.length === 1 ? "track" : "tracks"}${offlineReadyCount > 0 ? ` · ${offlineReadyCount} offline` : ""}`}
+                  </span>
                 </p>
               </div>
             </div>
@@ -1151,11 +1640,14 @@ export function BismahAudioPlayerApp({
             ) : viewStyle === "list" ? (
               /* LIST VIEW (Screenshot 2) */
               <div className="mx-auto max-w-3xl space-y-3">
-                {tracks.map((track) => {
+                {tracks.map((track, trackIdx) => {
                   const isCurrent = activeTrackId === track.id;
                   const isTrackPlaying = isCurrent && isPlaying;
                   const downloadState = downloadsMap[track.id];
-                  const isDownloaded = Boolean(offlineMap[track.id]);
+                  const offlineEntry = offlineMap[track.id];
+                  const isOfflineReady = Boolean(offlineEntry?.hasAudioBlob);
+                  const isBlocked = Boolean(blockedDownloadIds[track.id]);
+                  const artworkSrc = getTrackArtworkSrc(track);
 
                   return (
                     <div
@@ -1179,9 +1671,9 @@ export function BismahAudioPlayerApp({
                       <div className="flex min-w-0 flex-1 items-center gap-3.5">
                         {/* Square Rounded Thumbnail */}
                         <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-black/10 sm:h-16 sm:w-16">
-                          {track.thumbnail ? (
+                          {artworkSrc ? (
                             <img
-                              src={track.thumbnail}
+                              src={artworkSrc}
                               alt={track.title}
                               referrerPolicy="no-referrer"
                               className="h-full w-full object-cover"
@@ -1193,6 +1685,11 @@ export function BismahAudioPlayerApp({
                             >
                               <Disc3 className="h-6 w-6" />
                             </div>
+                          )}
+                          {tracks.length > 1 && !downloadState && (
+                            <span className="absolute left-1 top-1 rounded-md bg-black/65 px-1 py-0.5 font-mono text-[9px] font-bold tabular-nums text-white">
+                              #{trackIdx + 1}
+                            </span>
                           )}
                           {downloadState && (
                             <div className="absolute inset-0 flex items-center justify-center bg-black/60 font-mono text-[11px] font-bold text-white">
@@ -1211,12 +1708,12 @@ export function BismahAudioPlayerApp({
                           >
                             {downloadState
                               ? downloadState.status
-                              : `${track.channelTitle}${track.durationSec > 0 ? ` · ${formatDurationClock(track.durationSec)}` : ""}`}
+                              : `${track.channelTitle}${track.durationSec > 0 ? ` · ${formatDurationClock(track.durationSec)}` : ""}${isOfflineReady && offlineEntry?.sizeBytes ? ` · ${formatStorageMb(offlineEntry.sizeBytes)}` : ""}`}
                           </p>
                         </div>
                       </div>
 
-                      {/* Right Action Controls: Download / Playing / Play + Delete */}
+                      {/* Right Action Controls: Download / Offline / Playing + Delete */}
                       <div
                         className="flex shrink-0 items-center gap-1.5"
                         onClick={(e) => e.stopPropagation()}
@@ -1239,26 +1736,43 @@ export function BismahAudioPlayerApp({
                             <Pause className="h-3.5 w-3.5 fill-current" />
                             <span>Playing</span>
                           </button>
-                        ) : isDownloaded ? (
+                        ) : isOfflineReady ? (
                           <button
                             type="button"
                             onClick={() => playTrack(track)}
                             className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold transition-opacity hover:opacity-90"
                             style={{ backgroundColor: accentSoftBg, color: accentColor }}
                           >
-                            <Play className="h-3.5 w-3.5 fill-current" />
-                            <span>Play</span>
+                            <Check className="h-3.5 w-3.5" />
+                            <span>Offline</span>
                           </button>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleDownloadTrack(track)}
-                            className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold transition-opacity hover:opacity-90"
-                            style={{ backgroundColor: accentSoftBg, color: accentColor }}
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                            <span>Download</span>
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadTrack(track)}
+                              className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-semibold transition-opacity hover:opacity-90"
+                              style={{ backgroundColor: accentSoftBg, color: accentColor }}
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              <span>{isBlocked ? "Retry" : "Download"}</span>
+                            </button>
+                            {isBlocked && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  attachTargetTrackRef.current = track;
+                                  attachFileInputRef.current?.click();
+                                }}
+                                title="Attach MP3/M4A file for offline & screen-off playback"
+                                className="inline-flex h-9 items-center gap-1 rounded-xl border px-2.5 text-xs font-semibold transition-opacity hover:opacity-90"
+                                style={{ borderColor: accentColor, color: accentColor }}
+                              >
+                                <Upload className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">Attach</span>
+                              </button>
+                            )}
+                          </>
                         )}
 
                         <button
@@ -1279,11 +1793,14 @@ export function BismahAudioPlayerApp({
             ) : (
               /* GRID VIEW (Screenshots 4 & 7) */
               <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4">
-                {tracks.map((track) => {
+                {tracks.map((track, trackIdx) => {
                   const isCurrent = activeTrackId === track.id;
                   const isTrackPlaying = isCurrent && isPlaying;
                   const downloadState = downloadsMap[track.id];
-                  const isDownloaded = Boolean(offlineMap[track.id]);
+                  const offlineEntry = offlineMap[track.id];
+                  const isOfflineReady = Boolean(offlineEntry?.hasAudioBlob);
+                  const isBlocked = Boolean(blockedDownloadIds[track.id]);
+                  const artworkSrc = getTrackArtworkSrc(track);
                   const ringRadius = 18;
                   const ringCirc = 2 * Math.PI * ringRadius;
                   const ringOffset =
@@ -1313,9 +1830,9 @@ export function BismahAudioPlayerApp({
                     >
                       {/* Thumbnail Area */}
                       <div className="relative aspect-[16/11] w-full overflow-hidden bg-black/15">
-                        {track.thumbnail ? (
+                        {artworkSrc ? (
                           <img
-                            src={track.thumbnail}
+                            src={artworkSrc}
                             alt={track.title}
                             referrerPolicy="no-referrer"
                             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
@@ -1329,15 +1846,19 @@ export function BismahAudioPlayerApp({
                           </div>
                         )}
 
-                        {/* PLAYING Badge top-left (Screenshot 7) */}
-                        {isTrackPlaying && (
+                        {/* PLAYING Badge top-left (Screenshot 7) or subtle serial number */}
+                        {isTrackPlaying ? (
                           <span
                             className="absolute left-2.5 top-2.5 rounded-full bg-white px-2.5 py-0.5 text-[10px] font-bold tracking-wider shadow-xs"
                             style={{ color: accentColor }}
                           >
                             PLAYING
                           </span>
-                        )}
+                        ) : tracks.length > 1 && !downloadState ? (
+                          <span className="absolute left-2 top-2 rounded-md bg-black/65 px-1.5 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-white backdrop-blur-xs">
+                            #{trackIdx + 1}
+                          </span>
+                        ) : null}
 
                         {/* Duration Badge bottom-right (Screenshots 4 & 7) */}
                         {track.durationSec > 0 && (
@@ -1408,7 +1929,7 @@ export function BismahAudioPlayerApp({
                           ) : isTrackPlaying ? (
                             <>
                               <span className="rounded-full bg-white/20 px-2.5 py-1 text-[11px] font-semibold">
-                                Playing
+                                {activeEngine === "native" ? "Offline" : "Playing"}
                               </span>
                               <div className="flex items-center gap-1.5">
                                 <button
@@ -1432,7 +1953,7 @@ export function BismahAudioPlayerApp({
                             </>
                           ) : (
                             <>
-                              {isDownloaded ? (
+                              {isOfflineReady ? (
                                 <button
                                   type="button"
                                   onClick={() => playTrack(track)}
@@ -1440,7 +1961,21 @@ export function BismahAudioPlayerApp({
                                   style={{ backgroundColor: accentSoftBg, color: accentColor }}
                                 >
                                   <Check className="h-3 w-3" />
-                                  <span>Saved</span>
+                                  <span>Offline</span>
+                                </button>
+                              ) : isBlocked ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    attachTargetTrackRef.current = track;
+                                    attachFileInputRef.current?.click();
+                                  }}
+                                  title="Attach MP3/M4A file for offline playback"
+                                  className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold transition-opacity hover:opacity-90"
+                                  style={{ backgroundColor: accentSoftBg, color: accentColor }}
+                                >
+                                  <Upload className="h-3 w-3" />
+                                  <span>Attach</span>
                                 </button>
                               ) : (
                                 <button
@@ -1533,9 +2068,9 @@ export function BismahAudioPlayerApp({
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   <div className="h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-black/15">
-                    {activeTrack.thumbnail ? (
+                    {getTrackArtworkSrc(activeTrack) ? (
                       <img
-                        src={activeTrack.thumbnail}
+                        src={getTrackArtworkSrc(activeTrack)}
                         alt={activeTrack.title}
                         referrerPolicy="no-referrer"
                         className="h-full w-full object-cover"
@@ -1553,7 +2088,11 @@ export function BismahAudioPlayerApp({
                   <div className="min-w-0 flex-1 font-['Hind_Siliguri','Plus_Jakarta_Sans',sans-serif]">
                     <p className="truncate text-sm font-bold">{activeTrack.title}</p>
                     <p className={`truncate text-xs ${mutedText}`}>
-                      {isBuffering ? "Loading audio..." : activeTrack.channelTitle}
+                      {isBuffering
+                        ? "Loading audio..."
+                        : activeEngine === "native"
+                          ? `Offline · Screen-Off Ready`
+                          : activeTrack.channelTitle}
                     </p>
                   </div>
                 </div>
@@ -1741,6 +2280,36 @@ export function BismahAudioPlayerApp({
                   </div>
                 </div>
 
+                {/* Serial Auto-Play Toggle */}
+                <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                  <div>
+                    <p className="text-sm font-semibold">Serial Auto-Play</p>
+                    <p className={`text-xs ${mutedText}`}>
+                      Play next track automatically, even with screen off
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={serialAutoPlay}
+                    onClick={toggleSerialAutoPlay}
+                    className="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors"
+                    style={{
+                      backgroundColor: serialAutoPlay
+                        ? accentColor
+                        : isDark
+                          ? "rgba(255,255,255,0.16)"
+                          : "#D4D4D8",
+                    }}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition-transform ${
+                        serialAutoPlay ? "translate-x-6" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+
                 {/* Clipboard Link Prompt Toggle */}
                 <div className="flex items-center justify-between gap-4 px-4 py-3.5">
                   <div>
@@ -1771,54 +2340,90 @@ export function BismahAudioPlayerApp({
               </div>
             </section>
 
-            {/* Storage Section */}
+            {/* Storage & Offline Playback Section */}
             <section>
-              <h3 className={`mb-2.5 text-xs font-semibold ${mutedText}`}>Storage</h3>
+              <h3 className={`mb-2.5 text-xs font-semibold ${mutedText}`}>
+                Offline Storage &amp; Screen-Off Playback
+              </h3>
               <div
-                className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border px-4 py-4 ${cardBg}`}
+                className={`divide-y rounded-2xl border ${cardBg} ${isDark ? "divide-white/[0.07]" : "divide-[#E4E4E2]"}`}
               >
-                <div>
-                  <p className="font-mono text-base font-bold tabular-nums">
-                    {formatStorageMb(totalStorageBytes)} Used
-                  </p>
-                  <p className={`mt-0.5 text-xs ${mutedText}`}>
-                    {tracks.length} {tracks.length === 1 ? "track" : "tracks"} ·{" "}
-                    {uniquePlaylistCount} {uniquePlaylistCount === 1 ? "playlist" : "playlists"}
-                  </p>
-                </div>
+                <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-4">
+                  <div>
+                    <p className="font-mono text-base font-bold tabular-nums">
+                      {formatStorageMb(totalStorageBytes)} Used
+                    </p>
+                    <p className={`mt-0.5 text-xs ${mutedText}`}>
+                      {offlineReadyCount} offline ready · {tracks.length}{" "}
+                      {tracks.length === 1 ? "track" : "tracks"} · {uniquePlaylistCount}{" "}
+                      {uniquePlaylistCount === 1 ? "playlist" : "playlists"}
+                    </p>
+                  </div>
 
-                <div className="flex items-center gap-2">
-                  {totalStorageBytes > 0 && (
+                  <div className="flex items-center gap-2">
+                    {totalStorageBytes > 0 && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await clearAllOfflineAudioEntries();
+                          for (const url of preloadedBlobUrlsRef.current.values()) {
+                            URL.revokeObjectURL(url);
+                          }
+                          preloadedBlobUrlsRef.current.clear();
+                          setOfflineMap({});
+                          offlineMapRef.current = {};
+                          showToast("Cleared offline cache");
+                        }}
+                        className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition-colors ${
+                          isDark
+                            ? "border-white/10 hover:bg-white/5"
+                            : "border-border hover:bg-black/5"
+                        }`}
+                      >
+                        Clear Cache
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={async () => {
-                        await clearAllOfflineAudioEntries();
-                        setOfflineMap({});
-                        showToast("Cleared offline cache");
+                        await refreshOfflineStorage();
+                        showToast("Storage refreshed");
                       }}
-                      className={`inline-flex h-9 items-center gap-1.5 rounded-xl border px-3 text-xs font-semibold transition-colors ${
-                        isDark
-                          ? "border-white/10 hover:bg-white/5"
-                          : "border-border hover:bg-black/5"
-                      }`}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold transition-opacity hover:opacity-90"
+                      style={{ backgroundColor: accentSoftBg, color: accentColor }}
                     >
-                      Clear Cache
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      <span>Refresh</span>
                     </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await refreshOfflineStorage();
-                      showToast("Storage refreshed");
-                    }}
-                    className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold transition-opacity hover:opacity-90"
-                    style={{ backgroundColor: accentSoftBg, color: accentColor }}
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    <span>Refresh</span>
-                  </button>
+                  </div>
                 </div>
+
+                {!isInstalled && (isInstallable || isIOS) && (
+                  <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                    <div>
+                      <p className="text-sm font-semibold">Install App for Offline Access</p>
+                      <p className={`text-xs ${mutedText}`}>
+                        {isIOS
+                          ? "Tap Share → Add to Home Screen for offline opening"
+                          : "Open Bismah directly from home screen with no internet"}
+                      </p>
+                    </div>
+                    {isInstallable && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          installApp().catch(() => {});
+                        }}
+                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl px-3.5 text-xs font-semibold shadow-xs transition-opacity hover:opacity-90"
+                        style={{ backgroundColor: accentColor, color: onAccentColor }}
+                      >
+                        <Smartphone className="h-3.5 w-3.5" />
+                        <span>Install</span>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </section>
           </div>
@@ -1907,7 +2512,7 @@ export function BismahAudioPlayerApp({
 
             {urlError && <p className="mt-2.5 text-xs font-medium text-rose-500">{urlError}</p>}
 
-            {/* Secondary Option: Import Local MP3/M4A File for 100% Native Offline Playback */}
+            {/* Secondary Option: Import Local MP3/M4A Audio Files for Instant Offline & Screen-Off Playback */}
             <div className="mt-4 flex items-center justify-between">
               <button
                 type="button"
@@ -1915,7 +2520,7 @@ export function BismahAudioPlayerApp({
                 className={`inline-flex items-center gap-1.5 text-xs font-medium underline underline-offset-4 transition-opacity hover:opacity-100 ${mutedText} opacity-80`}
               >
                 <Upload className="h-3.5 w-3.5" />
-                <span>Or import local audio file</span>
+                <span>Or import local audio files (MP3 / M4A)</span>
               </button>
             </div>
 
@@ -1980,9 +2585,9 @@ export function BismahAudioPlayerApp({
           <div className="mx-auto my-auto w-full max-w-md py-6">
             {/* Large Square Rounded Artwork */}
             <div className="mx-auto aspect-square w-full max-w-[320px] overflow-hidden rounded-3xl bg-black shadow-2xl">
-              {activeTrack.thumbnail ? (
+              {getTrackArtworkSrc(activeTrack) ? (
                 <img
-                  src={activeTrack.thumbnail}
+                  src={getTrackArtworkSrc(activeTrack)}
                   alt={activeTrack.title}
                   referrerPolicy="no-referrer"
                   className="h-full w-full object-cover"
@@ -2125,7 +2730,9 @@ export function BismahAudioPlayerApp({
             >
               <SlidersHorizontal className="h-3.5 w-3.5" style={{ color: accentColor }} />
               <span>
-                {activeEngine === "native" ? "Offline Audio" : "High Quality Audio"} · Bismah Player
+                {activeEngine === "native"
+                  ? "Offline Audio · Screen-Off Ready"
+                  : "Online Stream · Download for Offline"}
                 {sleepRemainingSec !== null
                   ? ` · Sleep ${formatDurationClock(sleepRemainingSec)}`
                   : ""}

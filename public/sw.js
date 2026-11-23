@@ -1,5 +1,8 @@
-const CACHE_NAME = "ss-sabbir-pwa-v3";
+const CACHE_NAME = "ss-sabbir-pwa-v4";
 const PRECACHE_ASSETS = [
+  "/",
+  "/bismah",
+  "/education",
   "/manifest.webmanifest",
   "/favicon.ico",
   "/favicon.png",
@@ -29,12 +32,20 @@ function isCacheableStaticAsset(url) {
   return STATIC_CACHE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix));
 }
 
+function isGoogleFontRequest(url) {
+  return (
+    url.origin === "https://fonts.googleapis.com" || url.origin === "https://fonts.gstatic.com"
+  );
+}
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_ASSETS))
+      .then((cache) =>
+        Promise.allSettled(PRECACHE_ASSETS.map((asset) => cache.add(asset).catch(() => {}))),
+      )
       .catch(() => {}),
   );
 });
@@ -62,26 +73,64 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+
+  // Cache Google Fonts (CacheFirst) so Bismah & Bangla typography stay crisp offline
+  if (isGoogleFontRequest(url)) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request)
+          .then((response) => {
+            if (response && (response.status === 200 || response.type === "opaque")) {
+              const copy = response.clone();
+              caches
+                .open(CACHE_NAME)
+                .then((cache) => cache.put(request, copy))
+                .catch(() => {});
+            }
+            return response;
+          })
+          .catch(() => cached);
+      }),
+    );
+    return;
+  }
+
   if (url.origin !== self.location.origin) return;
 
   // Never intercept Vite dev modules, source files, API endpoints, or versioned dependency chunks
   if (isDevModuleRequest(url) || url.pathname.startsWith("/api/")) return;
 
-  // Network-first for HTML navigation requests, caching successful responses so /books works offline
+  // Network-first for HTML navigation requests, caching both full URL and pathname
+  // so /bismah, /education?section=bismah, and /books open seamlessly without internet
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
         .then((response) => {
           if (response && response.status === 200) {
-            const copy = response.clone();
+            const copyForExact = response.clone();
+            const copyForPath = response.clone();
             caches
               .open(CACHE_NAME)
-              .then((cache) => cache.put(request, copy))
+              .then((cache) => {
+                cache.put(request, copyForExact).catch(() => {});
+                if (url.search) {
+                  cache.put(new Request(url.pathname), copyForPath).catch(() => {});
+                }
+              })
               .catch(() => {});
           }
           return response;
         })
-        .catch(() => caches.match(request).then((res) => res || caches.match("/books") || caches.match("/"))),
+        .catch(() =>
+          caches
+            .match(request)
+            .then((res) => res || caches.match(url.pathname))
+            .then((res) => res || caches.match("/bismah"))
+            .then((res) => res || caches.match("/education"))
+            .then((res) => res || caches.match("/books"))
+            .then((res) => res || caches.match("/")),
+        ),
     );
     return;
   }

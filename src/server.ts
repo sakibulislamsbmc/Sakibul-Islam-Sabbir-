@@ -1237,37 +1237,103 @@ async function handleBismahApiRequest(
       });
     }
 
-    // Attempt direct YouTube audio stream resolution via Innertube client first;
-    // gracefully fall back to client-side YouTube audio engine when datacenter IPs are challenged.
-    try {
-      const innertube = await fetch(
-        "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "user-agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
-          },
-          body: JSON.stringify({
-            videoId,
-            context: {
-              client: {
-                clientName: "ANDROID",
-                clientVersion: "20.10.38",
-                androidSdkVersion: 34,
-                hl: "en",
-                gl: "US",
-              },
-            },
-            contentCheckOk: true,
-            racyCheckOk: true,
-          }),
-          signal: AbortSignal.timeout(5000),
-        },
-      );
+    const ytCookie = await readLocalEnvVar("YOUTUBE_COOKIE");
 
-      if (innertube.ok) {
+    // 1. Fetch fresh visitorData from YouTube embed endpoint (critical for ANDROID_VR / IOS Innertube)
+    let visitorData: string | undefined;
+    try {
+      const embRes = await fetch(`https://www.youtube.com/embed/${encodeURIComponent(videoId)}`, {
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+          "accept-language": "en-US,en;q=0.9",
+        },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (embRes.ok) {
+        const html = await embRes.text();
+        visitorData = html.match(/"VISITOR_DATA":"([^"]+)"/)?.[1];
+      }
+    } catch {
+      // Proceed even if embed page fails
+    }
+
+    // 2. Multi-client Innertube extraction waterfall (ANDROID_VR -> IOS -> ANDROID)
+    // Prefer audio/mp4 (AAC) so both iOS Safari and Android Chrome play smoothly offline & with screen off.
+    const innertubeClients = [
+      {
+        ua: "com.google.android.apps.youtube.vr.oculus/1.61.48 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+        client: {
+          clientName: "ANDROID_VR",
+          clientVersion: "1.61.48",
+          deviceMake: "Oculus",
+          deviceModel: "Quest 3",
+          osName: "Android",
+          osVersion: "12L",
+          androidSdkVersion: 32,
+          hl: "en",
+          gl: "US",
+        },
+      },
+      {
+        ua: "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+        client: {
+          clientName: "IOS",
+          clientVersion: "20.10.4",
+          deviceMake: "Apple",
+          deviceModel: "iPhone16,2",
+          osName: "iPhone",
+          osVersion: "18.3.2.22D82",
+          hl: "en",
+          gl: "US",
+        },
+      },
+      {
+        ua: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
+        client: {
+          clientName: "ANDROID",
+          clientVersion: "20.10.38",
+          androidSdkVersion: 34,
+          hl: "en",
+          gl: "US",
+        },
+      },
+    ];
+
+    for (const profile of innertubeClients) {
+      try {
+        const reqHeaders: Record<string, string> = {
+          "content-type": "application/json",
+          "user-agent": profile.ua,
+        };
+        if (visitorData) reqHeaders["x-goog-visitor-id"] = visitorData;
+        if (ytCookie) reqHeaders["cookie"] = ytCookie;
+
+        const innertube = await fetch(
+          "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
+          {
+            method: "POST",
+            headers: reqHeaders,
+            body: JSON.stringify({
+              videoId,
+              context: {
+                client: {
+                  ...profile.client,
+                  ...(visitorData ? { visitorData } : {}),
+                },
+              },
+              contentCheckOk: true,
+              racyCheckOk: true,
+            }),
+            signal: AbortSignal.timeout(6000),
+          },
+        );
+
+        if (!innertube.ok) continue;
+
         const data = (await innertube.json()) as {
+          playabilityStatus?: { status?: string };
+          videoDetails?: { lengthSeconds?: string };
           streamingData?: {
             adaptiveFormats?: Array<{
               mimeType?: string;
@@ -1282,35 +1348,103 @@ async function handleBismahApiRequest(
           .filter((f) => f.mimeType?.startsWith("audio/") && Boolean(f.url))
           .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
 
+        // Prefer ~128kbps AAC MP4 (fast download + universal iOS/Android screen-off support)
+        const mp4Formats = audioFormats.filter((f) => f.mimeType?.includes("audio/mp4"));
         const preferred =
-          audioFormats.find((f) => f.mimeType?.includes("audio/mp4")) ?? audioFormats[0];
+          mp4Formats.find((f) => (f.bitrate ?? 0) >= 96_000 && (f.bitrate ?? 0) <= 180_000) ??
+          mp4Formats[0] ??
+          audioFormats[0];
 
-        if (preferred?.url) {
-          const audioRes = await fetch(preferred.url, {
-            headers: {
-              "user-agent": "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
-            },
-            signal: AbortSignal.timeout(25000),
+        if (!preferred?.url) continue;
+
+        const contentLenNum = Number(preferred.contentLength || 0);
+        const cleanCt = (preferred.mimeType || "audio/mp4").split(";")[0].trim() || "audio/mp4";
+
+        if (contentLenNum > 0) {
+          // Verify first 1MB chunk succeeds before committing 200 OK audio stream headers
+          const CHUNK_SIZE = 1024 * 1024;
+          const sep = preferred.url.includes("?") ? "&" : "?";
+          const firstEnd = Math.min(contentLenNum - 1, CHUNK_SIZE - 1);
+          const firstRes = await fetch(`${preferred.url}${sep}range=0-${firstEnd}`, {
+            headers: { "user-agent": profile.ua, accept: "*/*" },
+            signal: AbortSignal.timeout(15000),
           });
-          if (audioRes.ok && audioRes.body) {
-            const headers = new Headers();
-            headers.set("content-type", audioRes.headers.get("content-type") || "audio/mp4");
-            const len = audioRes.headers.get("content-length") || preferred.contentLength;
-            if (len) headers.set("content-length", len);
-            headers.set("cache-control", "private, max-age=3600");
-            return new Response(audioRes.body, { status: 200, headers });
+
+          if (!firstRes.ok) continue;
+          const firstBuf = new Uint8Array(await firstRes.arrayBuffer());
+          if (firstBuf.byteLength === 0) continue;
+
+          const stream = new ReadableStream<Uint8Array>({
+            async start(controller) {
+              try {
+                controller.enqueue(firstBuf);
+                let offset = firstEnd + 1;
+                while (offset < contentLenNum) {
+                  const end = Math.min(contentLenNum - 1, offset + CHUNK_SIZE - 1);
+                  const chunkRes = await fetch(`${preferred.url}${sep}range=${offset}-${end}`, {
+                    headers: { "user-agent": profile.ua, accept: "*/*" },
+                    signal: AbortSignal.timeout(20000),
+                  });
+                  if (!chunkRes.ok) {
+                    throw new Error(`Chunk failed with status ${chunkRes.status}`);
+                  }
+                  const chunkBuf = new Uint8Array(await chunkRes.arrayBuffer());
+                  if (chunkBuf.byteLength === 0) break;
+                  controller.enqueue(chunkBuf);
+                  offset += chunkBuf.byteLength;
+                }
+                controller.close();
+              } catch (err) {
+                controller.error(err);
+              }
+            },
+          });
+
+          const headers = new Headers();
+          headers.set("content-type", cleanCt);
+          headers.set("content-length", String(contentLenNum));
+          headers.set("accept-ranges", "bytes");
+          headers.set("x-bismah-audio-source", "direct");
+          if (data.videoDetails?.lengthSeconds) {
+            headers.set("x-bismah-duration-sec", data.videoDetails.lengthSeconds);
           }
+          headers.set("cache-control", "private, max-age=3600");
+          return new Response(stream, { status: 200, headers });
         }
+
+        // Fallback if YouTube omitted contentLength
+        const audioRes = await fetch(preferred.url, {
+          headers: {
+            "user-agent": profile.ua,
+            accept: "*/*",
+          },
+          signal: AbortSignal.timeout(45000),
+        });
+
+        if (audioRes.ok && audioRes.body) {
+          const rawCt = audioRes.headers.get("content-type") || cleanCt;
+          const headers = new Headers();
+          headers.set("content-type", rawCt.split(";")[0].trim() || "audio/mp4");
+          const len = audioRes.headers.get("content-length");
+          if (len) headers.set("content-length", len);
+          headers.set("accept-ranges", "bytes");
+          headers.set("x-bismah-audio-source", "direct");
+          if (data.videoDetails?.lengthSeconds) {
+            headers.set("x-bismah-duration-sec", data.videoDetails.lengthSeconds);
+          }
+          headers.set("cache-control", "private, max-age=3600");
+          return new Response(audioRes.body, { status: 200, headers });
+        }
+      } catch {
+        // Try next Innertube client
       }
-    } catch {
-      // Fall back cleanly
     }
 
     return new Response(
       JSON.stringify({
-        mode: "youtube-engine",
+        mode: "client-extract-fallback",
         videoId,
-        cached: true,
+        hasAudioBlob: false,
       }),
       {
         status: 200,
@@ -1320,6 +1454,74 @@ async function handleBismahApiRequest(
         },
       },
     );
+  }
+
+  // Allowlisted audio stream relay used ONLY when the user's residential browser resolves a
+  // googlevideo.com or public Invidious/Piped stream URL that lacks CORS headers.
+  if (pathname === "/api/bismah/proxy-audio") {
+    const rawTarget = searchParams.get("url")?.trim() || "";
+    let parsedTarget: URL;
+    try {
+      parsedTarget = new URL(rawTarget);
+    } catch {
+      return new Response(JSON.stringify({ error: "Invalid audio stream URL" }), {
+        status: 400,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+
+    const host = parsedTarget.hostname.toLowerCase();
+    const isAllowedHost =
+      parsedTarget.protocol === "https:" &&
+      (host.endsWith(".googlevideo.com") ||
+        host === "inv.nadeko.net" ||
+        host === "invidious.nerdvpn.de" ||
+        host === "invidious.tiekoetter.com" ||
+        host.startsWith("pipedproxy-") ||
+        host.endsWith(".kavin.rocks") ||
+        host.endsWith(".private.coffee"));
+
+    if (!isAllowedHost) {
+      return new Response(JSON.stringify({ error: "Audio host is not allowlisted" }), {
+        status: 403,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
+
+    try {
+      const upstream = await fetch(parsedTarget.toString(), {
+        headers: {
+          "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+          accept: "audio/*,*/*;q=0.8",
+        },
+        signal: AbortSignal.timeout(45000),
+      });
+
+      const ct = upstream.headers.get("content-type") || "";
+      if (
+        !upstream.ok ||
+        !upstream.body ||
+        (!ct.startsWith("audio/") && !ct.includes("octet-stream"))
+      ) {
+        return new Response(JSON.stringify({ error: "Upstream audio unavailable" }), {
+          status: 502,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        });
+      }
+
+      const headers = new Headers();
+      headers.set("content-type", ct.split(";")[0].trim() || "audio/mp4");
+      const len = upstream.headers.get("content-length");
+      if (len) headers.set("content-length", len);
+      headers.set("cache-control", "private, max-age=1800");
+      return new Response(upstream.body, { status: 200, headers });
+    } catch {
+      return new Response(JSON.stringify({ error: "Failed to stream audio" }), {
+        status: 502,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    }
   }
 
   return new Response(JSON.stringify({ error: "Not found" }), {
